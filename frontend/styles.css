@@ -79,27 +79,42 @@ h1 {
   margin-top: 28px;
 }
 
-.panel {
-  margin-bottom: 18px;
-  padding: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: var(--radius);
-  background: rgba(10, 17, 30, 0.75);
-  box-shadow: var(--shadow);
-}
-
-.panel-head {
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
   margin-bottom: 16px;
 }
 
-.panel-head h2 {
-  margin: 0;
-  font-size: 1.3rem;
+.secondary-button {
+  color: var(--text);
+  background: rgba(14, 24, 40, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: none;
 }
 
-.panel-head p {
-  margin: 8px 0 0;
-  color: var(--muted);
+.secondary-button:hover {
+  transform: translateY(-1px);
+}
+
+.preset-dialog {
+  width: min(760px, calc(100% - 24px));
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.preset-dialog::backdrop {
+  background: rgba(2, 6, 15, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.editor-shell {
+  padding: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(18, 31, 51, 0.99), rgba(10, 17, 30, 0.99));
+  box-shadow: var(--shadow);
 }
 
 .status {
@@ -125,10 +140,6 @@ h1 {
   box-shadow: var(--shadow);
   backdrop-filter: blur(10px);
   animation: rise 420ms ease both;
-}
-
-.preset-form {
-  margin-bottom: 18px;
 }
 
 .field-grid {
@@ -175,6 +186,13 @@ h1 {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .card h2 {
@@ -229,11 +247,30 @@ h1 {
   gap: 12px;
 }
 
-.form-footer {
+.dialog-header,
+.dialog-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.dialog-header {
+  margin-bottom: 16px;
+}
+
+.dialog-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.dialog-header p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.dialog-footer {
+  margin-top: 16px;
 }
 
 button {
@@ -266,7 +303,7 @@ button:disabled {
   font-size: 0.92rem;
 }
 
-.form-footer .feedback {
+.dialog-footer .feedback {
   flex: 1;
 }
 
@@ -308,9 +345,14 @@ button:disabled {
     padding: 16px;
   }
 
-  .form-footer,
-  .card-header {
+  .dialog-footer,
+  .card-header,
+  .dialog-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .action-buttons {
+    justify-content: flex-start;
   }
 }

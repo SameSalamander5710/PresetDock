@@ -55,8 +55,9 @@ Scan `presets/*.json` fresh on each request — no caching needed at this scale.
 ## Frontend requirements
 - Send a lightweight heartbeat to `POST /api/heartbeat` every 30 seconds while the page is open.
 - On load, `fetch('/api/presets')` and render one card per preset: name, model, tags, description, the full command shown in a monospace block (visible, not hidden/truncated), and a Run button.
+- Keep the main list in the old card-style UI. Add a `Create` button that opens a preset editor only when pressed, and an `Edit` button next to each preset's Run button that opens the same editor prefilled for that preset.
 - Run button calls `POST /api/run/{id}`; show simple success/fail feedback (e.g. button label change or small toast) — no complex state needed.
-- Add a preset editor in the UI so presets can be created and edited directly from the browser, including all preset fields that are currently supported by the JSON format.
+- The create/edit editor should include all preset fields supported by the JSON format and remain hidden until explicitly opened.
 - Clean but simple styling. No frameworks, no bundler — must be servable as-is via `go:embed`.
 
 ## Build & run

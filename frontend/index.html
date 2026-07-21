@@ -19,15 +19,58 @@
 
       <section class="content">
         <div id="status" class="status" role="status" aria-live="polite">Loading presets...</div>
-        <section class="panel">
-          <div class="panel-head">
-            <h2>Create a preset</h2>
-            <p>Edit any field and save directly from the browser.</p>
-          </div>
-          <div id="new-preset"></div>
-        </section>
+        <div class="toolbar">
+          <button id="create-button" type="button" class="secondary-button">Create</button>
+        </div>
         <div id="presets" class="grid" aria-live="polite"></div>
       </section>
     </main>
+
+    <dialog id="preset-dialog" class="preset-dialog">
+      <form id="preset-editor" class="editor-shell">
+        <div class="dialog-header">
+          <div>
+            <h2 id="preset-dialog-title">Create preset</h2>
+            <p id="preset-dialog-subtitle">Fill out the fields and save the preset JSON.</p>
+          </div>
+          <button id="editor-close" type="button" class="secondary-button">Close</button>
+        </div>
+
+        <div class="field-grid">
+          <label class="field">
+            <span class="field-label">Preset ID</span>
+            <input id="preset-id" name="id" type="text" placeholder="example" />
+          </label>
+          <label class="field">
+            <span class="field-label">Name</span>
+            <input id="preset-name" name="name" type="text" placeholder="Gemma 2 9B Q4" />
+          </label>
+          <label class="field">
+            <span class="field-label">Model</span>
+            <input id="preset-model" name="model" type="text" placeholder="gemma-2-9b-it-Q4_K_M.gguf" />
+          </label>
+          <label class="field full-width">
+            <span class="field-label">Tags</span>
+            <textarea id="preset-tags" name="tags" rows="3" placeholder="gemma, 9b, q4"></textarea>
+          </label>
+          <label class="field full-width">
+            <span class="field-label">Description</span>
+            <textarea id="preset-description" name="description" rows="3" placeholder="General purpose, balanced speed/quality"></textarea>
+          </label>
+          <label class="field full-width">
+            <span class="field-label">Command</span>
+            <textarea id="preset-command" name="command" rows="7" placeholder="llama-cli.exe -m models/..."></textarea>
+          </label>
+        </div>
+
+        <div class="dialog-footer">
+          <span id="preset-editor-feedback" class="feedback"></span>
+          <div class="dialog-actions">
+            <button id="editor-cancel" type="button" class="secondary-button">Cancel</button>
+            <button id="editor-save" type="submit">Save preset</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
   </body>
 </html>

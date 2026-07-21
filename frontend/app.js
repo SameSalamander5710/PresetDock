@@ -1,6 +1,24 @@
 const presetsEl = document.getElementById('presets');
 const statusEl = document.getElementById('status');
-const newPresetEl = document.getElementById('new-preset');
+const createButton = document.getElementById('create-button');
+const dialog = document.getElementById('preset-dialog');
+const editorForm = document.getElementById('preset-editor');
+const dialogTitle = document.getElementById('preset-dialog-title');
+const dialogSubtitle = document.getElementById('preset-dialog-subtitle');
+const editorFeedback = document.getElementById('preset-editor-feedback');
+const editorCloseButton = document.getElementById('editor-close');
+const editorCancelButton = document.getElementById('editor-cancel');
+const editorSaveButton = document.getElementById('editor-save');
+const idInput = document.getElementById('preset-id');
+const nameInput = document.getElementById('preset-name');
+const modelInput = document.getElementById('preset-model');
+const tagsInput = document.getElementById('preset-tags');
+const descriptionInput = document.getElementById('preset-description');
+const commandInput = document.getElementById('preset-command');
+
+let activePresetId = '';
+let autoSuggestId = true;
+let presetsCache = [];
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -46,31 +64,11 @@ function textToTags(text) {
     .filter(Boolean);
 }
 
-function createField(labelText, name, value, options = {}) {
-  const field = document.createElement('label');
-  field.className = options.fullWidth ? 'field full-width' : 'field';
-
-  const label = document.createElement('span');
-  label.className = 'field-label';
-  label.textContent = labelText;
-
-  let control;
-  if (options.multiline) {
-    control = document.createElement('textarea');
-    control.rows = options.rows || 3;
-  } else {
-    control = document.createElement('input');
-    control.type = 'text';
-  }
-
-  control.name = name;
-  control.value = value || '';
-  if (options.placeholder) {
-    control.placeholder = options.placeholder;
-  }
-
-  field.append(label, control);
-  return { field, control };
+function createTag(text) {
+  const tag = document.createElement('span');
+  tag.className = 'tag';
+  tag.textContent = text;
+  return tag;
 }
 
 function renderEmpty(message) {
@@ -81,174 +79,124 @@ function renderEmpty(message) {
   presetsEl.appendChild(empty);
 }
 
-function readPresetForm(form) {
-  const values = new FormData(form);
+function readEditorValues() {
   return {
-    id: String(values.get('id') || '').trim(),
-    name: String(values.get('name') || '').trim(),
-    model: String(values.get('model') || '').trim(),
-    tags: textToTags(String(values.get('tags') || '')),
-    description: String(values.get('description') || '').trim(),
-    command: String(values.get('command') || '').trim(),
+    id: idInput.value.trim(),
+    name: nameInput.value.trim(),
+    model: modelInput.value.trim(),
+    tags: textToTags(tagsInput.value),
+    description: descriptionInput.value.trim(),
+    command: commandInput.value.trim(),
   };
 }
 
-function createPresetEditor(preset, options = {}) {
-  const isExisting = Boolean(options.originalId);
-  const form = document.createElement('form');
-  form.className = 'card preset-form';
-  form.dataset.originalId = options.originalId || '';
+function fillEditor(preset) {
+  idInput.value = preset.id || '';
+  nameInput.value = preset.name || '';
+  modelInput.value = preset.model || '';
+  tagsInput.value = tagsToText(preset.tags);
+  descriptionInput.value = preset.description || '';
+  commandInput.value = preset.command || '';
+}
+
+function openEditor(preset) {
+  const isExisting = Boolean(preset && preset.id);
+  activePresetId = isExisting ? preset.id : '';
+  autoSuggestId = !isExisting;
+
+  dialogTitle.textContent = isExisting ? `Edit ${preset.id}` : 'Create preset';
+  dialogSubtitle.textContent = isExisting
+    ? 'Update the preset fields and save the JSON file.'
+    : 'Fill out the fields and create a new preset JSON file.';
+  editorSaveButton.textContent = isExisting ? 'Save preset' : 'Create preset';
+
+  fillEditor(preset || { id: '', name: '', model: '', tags: [], description: '', command: '' });
+  editorFeedback.classList.remove('error');
+  editorFeedback.textContent = '';
+
+  if (typeof dialog.showModal === 'function') {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute('open', '');
+  }
+
+  if (!isExisting) {
+    nameInput.focus();
+  } else {
+    idInput.focus();
+  }
+}
+
+function closeEditor() {
+  if (dialog.open) {
+    dialog.close();
+  }
+  editorFeedback.classList.remove('error');
+  editorFeedback.textContent = '';
+}
+
+function createPresetCard(preset, index) {
+  const card = document.createElement('article');
+  card.className = 'card';
+  card.style.animationDelay = `${Math.min(index * 70, 350)}ms`;
 
   const header = document.createElement('div');
   header.className = 'card-header';
 
-  const headerText = document.createElement('div');
+  const titleWrap = document.createElement('div');
   const title = document.createElement('h2');
-  title.textContent = isExisting ? `Editing ${options.originalId}` : 'New preset';
-  const subtitle = document.createElement('p');
-  subtitle.className = 'model';
-  subtitle.textContent = isExisting ? 'Update the saved file and click Save preset.' : 'Fill out the form and create a new file.';
-  headerText.append(title, subtitle);
+  title.textContent = preset.name || preset.id;
+  const model = document.createElement('p');
+  model.className = 'model';
+  model.textContent = preset.model || 'No model specified';
+  titleWrap.append(title, model);
 
-  const headerActions = document.createElement('div');
-  headerActions.className = 'actions';
-
-  const saveButton = document.createElement('button');
-  saveButton.type = 'submit';
-  saveButton.textContent = isExisting ? 'Save preset' : 'Create preset';
-
-  headerActions.appendChild(saveButton);
-
-  header.append(headerText, headerActions);
-
-  const grid = document.createElement('div');
-  grid.className = 'field-grid';
-
-  const idField = createField('Preset ID', 'id', preset.id || '', {
-    placeholder: 'example',
-  });
-  const nameField = createField('Name', 'name', preset.name || '', {
-    placeholder: 'Gemma 2 9B Q4',
-  });
-  const modelField = createField('Model', 'model', preset.model || '', {
-    placeholder: 'gemma-2-9b-it-Q4_K_M.gguf',
-  });
-  const tagsField = createField('Tags', 'tags', tagsToText(preset.tags), {
-    multiline: true,
-    rows: 3,
-    fullWidth: true,
-    placeholder: 'gemma, 9b, q4',
-  });
-  const descriptionField = createField('Description', 'description', preset.description || '', {
-    multiline: true,
-    rows: 3,
-    fullWidth: true,
-    placeholder: 'General purpose, balanced speed/quality',
-  });
-  const commandField = createField('Command', 'command', preset.command || '', {
-    multiline: true,
-    rows: 7,
-    fullWidth: true,
-    placeholder: 'llama-cli.exe -m models/...',
-  });
-
-  grid.append(
-    idField.field,
-    nameField.field,
-    modelField.field,
-    tagsField.field,
-    descriptionField.field,
-    commandField.field,
-  );
-
-  const footer = document.createElement('div');
-  footer.className = 'form-footer';
-
-  const feedback = document.createElement('span');
-  feedback.className = 'feedback';
+  const actionButtons = document.createElement('div');
+  actionButtons.className = 'action-buttons';
 
   const runButton = document.createElement('button');
   runButton.type = 'button';
   runButton.textContent = 'Run';
-  if (!isExisting) {
-    runButton.disabled = true;
-    runButton.title = 'Save the new preset before running it.';
-  }
 
-  footer.append(feedback, runButton);
+  const editButton = document.createElement('button');
+  editButton.type = 'button';
+  editButton.textContent = 'Edit';
+  editButton.className = 'secondary-button';
 
-  let autoSuggestedId = !isExisting;
-  if (!isExisting) {
-    nameField.control.addEventListener('input', () => {
-      if (!autoSuggestedId || idField.control.value.trim()) {
-        return;
-      }
+  actionButtons.append(runButton, editButton);
+  header.append(titleWrap, actionButtons);
 
-      idField.control.value = slugify(nameField.control.value);
-    });
+  const description = document.createElement('p');
+  description.className = 'description';
+  description.textContent = preset.description || 'No description provided.';
 
-    idField.control.addEventListener('input', () => {
-      autoSuggestedId = false;
-    });
-  }
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-
-    saveButton.disabled = true;
-    runButton.disabled = true;
-    feedback.classList.remove('error');
-    feedback.textContent = isExisting ? 'Saving...' : 'Creating...';
-
-    const payload = readPresetForm(form);
-    const originalId = form.dataset.originalId || '';
-    const endpoint = originalId ? `/api/presets/${encodeURIComponent(originalId)}` : '/api/presets';
-    const method = originalId ? 'PUT' : 'POST';
-
-    try {
-      const response = await fetch(endpoint, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorPayload = await response.json().catch(() => ({}));
-        throw new Error(errorPayload.error || `Request failed with status ${response.status}`);
-      }
-
-      feedback.textContent = originalId ? 'Preset saved.' : 'Preset created.';
-      setStatus(originalId ? 'Preset updated.' : 'Preset created.');
-      await loadPresets();
-    } catch (error) {
-      feedback.classList.add('error');
-      feedback.textContent = error instanceof Error ? error.message : 'Save failed.';
-    } finally {
-      saveButton.disabled = false;
-      runButton.disabled = !isExisting;
-    }
+  const tags = document.createElement('div');
+  tags.className = 'tags';
+  (preset.tags || []).forEach((tagText) => {
+    tags.appendChild(createTag(tagText));
   });
 
-  runButton.addEventListener('click', async () => {
-    if (!options.originalId) {
-      return;
-    }
+  const command = document.createElement('pre');
+  command.className = 'command';
+  command.textContent = preset.command || '';
 
+  const feedback = document.createElement('span');
+  feedback.className = 'feedback';
+
+  runButton.addEventListener('click', async () => {
     const originalLabel = runButton.textContent;
     runButton.disabled = true;
     feedback.classList.remove('error');
     feedback.textContent = 'Launching...';
 
     try {
-      const response = await fetch(`/api/run/${encodeURIComponent(options.originalId)}`, {
+      const response = await fetch(`/api/run/${encodeURIComponent(preset.id)}`, {
         method: 'POST',
       });
 
       if (!response.ok) {
-        const errorPayload = await response.json().catch(() => ({}));
-        throw new Error(errorPayload.error || `Request failed with status ${response.status}`);
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || `Request failed with status ${response.status}`);
       }
 
       feedback.textContent = 'Launched in a new terminal.';
@@ -256,42 +204,36 @@ function createPresetEditor(preset, options = {}) {
     } catch (error) {
       feedback.classList.add('error');
       feedback.textContent = error instanceof Error ? error.message : 'Launch failed.';
+      runButton.textContent = originalLabel;
     } finally {
+      runButton.disabled = false;
       window.setTimeout(() => {
-        runButton.textContent = originalLabel;
+        if (runButton.textContent === 'Launched') {
+          runButton.textContent = originalLabel;
+        }
       }, 1400);
-      runButton.disabled = !isExisting;
     }
   });
 
-  form.append(header, grid, footer);
-  return form;
+  editButton.addEventListener('click', () => {
+    openEditor(preset);
+  });
+
+  card.append(header, description, tags, command, feedback);
+  return card;
 }
 
 function renderPresets(presets) {
-  newPresetEl.innerHTML = '';
   presetsEl.innerHTML = '';
 
-  newPresetEl.appendChild(createPresetEditor(
-    {
-      id: '',
-      name: '',
-      model: '',
-      tags: [],
-      description: '',
-      command: '',
-    },
-  ));
-
   if (!Array.isArray(presets) || presets.length === 0) {
-    renderEmpty('No presets found. Create one above and save it to the presets folder.');
+    renderEmpty('No presets found. Use Create to add one.');
     return;
   }
 
+  presetsCache = presets;
   presets.forEach((preset, index) => {
-    const editor = createPresetEditor(preset, { originalId: preset.id });
-    editor.style.animationDelay = `${Math.min(index * 70, 350)}ms`;
-    presetsEl.appendChild(editor);
+    presetsEl.appendChild(createPresetCard(preset, index));
   });
 }
 
@@ -307,12 +249,81 @@ async function loadPresets() {
     const presetCount = Array.isArray(presets) ? presets.length : 0;
     setStatus(`Loaded ${presetCount} preset${presetCount === 1 ? '' : 's'}.`);
   } catch (error) {
-    newPresetEl.innerHTML = '';
-    newPresetEl.appendChild(createPresetEditor({ id: '', name: '', model: '', tags: [], description: '', command: '' }));
     renderEmpty('Unable to load presets. Check the backend or refresh after adding valid JSON files.');
     setStatus(error instanceof Error ? error.message : 'Failed to load presets.', true);
   }
 }
+
+createButton.addEventListener('click', () => {
+  openEditor({ id: '', name: '', model: '', tags: [], description: '', command: '' });
+});
+
+editorCloseButton.addEventListener('click', closeEditor);
+editorCancelButton.addEventListener('click', closeEditor);
+
+dialog.addEventListener('cancel', () => {
+  editorFeedback.classList.remove('error');
+  editorFeedback.textContent = '';
+});
+
+nameInput.addEventListener('input', () => {
+  if (!autoSuggestId || idInput.value.trim()) {
+    return;
+  }
+
+  idInput.value = slugify(nameInput.value);
+});
+
+idInput.addEventListener('input', () => {
+  autoSuggestId = false;
+});
+
+editorForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const payload = readEditorValues();
+  const resolvedId = payload.id || slugify(payload.name);
+  if (!resolvedId) {
+    editorFeedback.classList.add('error');
+    editorFeedback.textContent = 'Preset ID or name is required.';
+    return;
+  }
+
+  payload.id = resolvedId;
+
+  const isEditing = Boolean(activePresetId);
+  const endpoint = isEditing ? `/api/presets/${encodeURIComponent(activePresetId)}` : '/api/presets';
+  const method = isEditing ? 'PUT' : 'POST';
+
+  editorSaveButton.disabled = true;
+  editorFeedback.classList.remove('error');
+  editorFeedback.textContent = isEditing ? 'Saving...' : 'Creating...';
+
+  try {
+    const response = await fetch(endpoint, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(errorPayload.error || `Request failed with status ${response.status}`);
+    }
+
+    editorFeedback.textContent = isEditing ? 'Preset saved.' : 'Preset created.';
+    setStatus(isEditing ? 'Preset updated.' : 'Preset created.');
+    closeEditor();
+    await loadPresets();
+  } catch (error) {
+    editorFeedback.classList.add('error');
+    editorFeedback.textContent = error instanceof Error ? error.message : 'Save failed.';
+  } finally {
+    editorSaveButton.disabled = false;
+  }
+});
 
 startHeartbeat();
 loadPresets();
