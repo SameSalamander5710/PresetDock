@@ -1,6 +1,7 @@
 const presetsEl = document.getElementById('presets');
 const statusEl = document.getElementById('status');
 const createButton = document.getElementById('create-button');
+const shutdownButton = document.getElementById('shutdown-button');
 const dialog = document.getElementById('preset-dialog');
 const editorForm = document.getElementById('preset-editor');
 const dialogTitle = document.getElementById('preset-dialog-title');
@@ -302,6 +303,28 @@ async function loadPresets() {
 
 createButton.addEventListener('click', () => {
   openEditor({ name: '', engine: '', model: '', tags: [], description: '', command: '' });
+});
+
+shutdownButton.addEventListener('click', async () => {
+  const originalLabel = shutdownButton.textContent;
+  shutdownButton.disabled = true;
+  shutdownButton.textContent = 'Shutting down...';
+  setStatus('Stopping server...');
+
+  try {
+    const response = await fetch('/api/shutdown', { method: 'POST' });
+    if (!response.ok && response.status !== 204) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `Request failed with status ${response.status}`);
+    }
+
+    setStatus('Server stopped. Restart PresetDock to continue.');
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : 'Failed to stop the server.', true);
+  } finally {
+    shutdownButton.disabled = false;
+    shutdownButton.textContent = originalLabel;
+  }
 });
 
 editorCloseButton.addEventListener('click', closeEditor);

@@ -83,6 +83,7 @@ h1 {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 16px;
+  gap: 10px;
 }
 
 .secondary-button {
@@ -94,6 +95,19 @@ h1 {
 
 .secondary-button:hover {
   transform: translateY(-1px);
+}
+
+.subtle-button {
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: none;
+  padding-inline: 14px;
+  opacity: 0.8;
+}
+
+.subtle-button:hover {
+  opacity: 1;
 }
 
 .preset-dialog {

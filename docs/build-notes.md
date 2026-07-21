@@ -11,6 +11,7 @@ PresetDock is a local Windows launcher for llama.cpp command presets. The app se
 - The JSON content stores the user-facing fields such as `name`, `engine`, `model`, `tags`, `description`, and `command`.
 - The UI shows presets as wide vertical cards for readability.
 - The UI supports Create, Edit, Delete, and Run actions from the browser.
+- The UI also includes a small shutdown action that stops the local server on demand.
 - A heartbeat keeps the server alive while the page is open; the server shuts down after about 2 minutes without a heartbeat.
 
 ## Preset Schema

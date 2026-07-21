@@ -81,6 +81,7 @@ func main() {
 	}
 
 	heartbeat := newHeartbeatState()
+	var requestShutdown func()
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/heartbeat", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +91,18 @@ func main() {
 		}
 
 		heartbeat.Touch()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.Handle("/api/shutdown", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+
+		if requestShutdown != nil {
+			go requestShutdown()
+		}
+
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	mux.Handle("/api/presets", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +215,14 @@ func main() {
 	}
 
 	server := &http.Server{Handler: mux}
+	requestShutdown = func() {
+		time.Sleep(150 * time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("shutdown error: %v", err)
+		}
+	}
 	go monitorHeartbeat(server, heartbeat)
 
 	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
