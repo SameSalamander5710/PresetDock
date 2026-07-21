@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	heartbeatInterval = 30 * time.Second
+	heartbeatTimeout  = 2 * time.Minute
+	shutdownTimeout   = 5 * time.Second
 )
 
 //go:embed frontend/*
@@ -28,13 +37,35 @@ type Preset struct {
 	Command     string   `json:"command"`
 }
 
+type heartbeatState struct {
+	mu       sync.Mutex
+	lastBeat time.Time
+}
+
+func newHeartbeatState() *heartbeatState {
+	return &heartbeatState{lastBeat: time.Now()}
+}
+
+func (state *heartbeatState) Touch() {
+	state.mu.Lock()
+	state.lastBeat = time.Now()
+	state.mu.Unlock()
+}
+
+func (state *heartbeatState) Stale(timeout time.Duration) bool {
+	state.mu.Lock()
+	lastBeat := state.lastBeat
+	state.mu.Unlock()
+	return time.Since(lastBeat) > timeout
+}
+
 func main() {
 	exeDir, err := executableDir()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	presetsDir := filepath.Join(exeDir, "presets")
+	presetsDir := resolvePresetsDir(exeDir)
 	if err := ensurePresetsDir(presetsDir); err != nil {
 		log.Fatal(err)
 	}
@@ -44,20 +75,71 @@ func main() {
 		log.Fatal(err)
 	}
 
+	heartbeat := newHeartbeatState()
+
 	mux := http.NewServeMux()
+	mux.Handle("/api/heartbeat", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+
+		heartbeat.Touch()
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.Handle("/api/presets", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w, http.MethodGet)
+		switch r.Method {
+		case http.MethodGet:
+			presets, err := loadPresets(presetsDir)
+			if err != nil {
+				httpError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+
+			writeJSON(w, http.StatusOK, presets)
+		case http.MethodPost:
+			var preset Preset
+			if err := json.NewDecoder(r.Body).Decode(&preset); err != nil {
+				httpError(w, http.StatusBadRequest, "invalid preset JSON")
+				return
+			}
+
+			savedPreset, err := savePreset(presetsDir, "", preset)
+			if err != nil {
+				httpError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+
+			writeJSON(w, http.StatusCreated, savedPreset)
+		default:
+			methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
+		}
+	}))
+	mux.Handle("/api/presets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, "/api/presets/")
+		if id == "" || strings.Contains(id, "/") {
+			http.NotFound(w, r)
 			return
 		}
 
-		presets, err := loadPresets(presetsDir)
-		if err != nil {
-			httpError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
+		switch r.Method {
+		case http.MethodPut:
+			var preset Preset
+			if err := json.NewDecoder(r.Body).Decode(&preset); err != nil {
+				httpError(w, http.StatusBadRequest, "invalid preset JSON")
+				return
+			}
 
-		writeJSON(w, http.StatusOK, presets)
+			savedPreset, err := savePreset(presetsDir, id, preset)
+			if err != nil {
+				httpError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+
+			writeJSON(w, http.StatusOK, savedPreset)
+		default:
+			methodNotAllowed(w, http.MethodPut)
+		}
 	}))
 	mux.Handle("/api/run/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -93,6 +175,9 @@ func main() {
 
 	listener, err := net.Listen("tcp", "127.0.0.1:8765")
 	if err != nil {
+		if launchIfAlreadyRunning() {
+			return
+		}
 		log.Fatal(err)
 	}
 
@@ -100,7 +185,48 @@ func main() {
 		log.Printf("browser launch failed: %v", err)
 	}
 
-	log.Fatal(http.Serve(listener, mux))
+	server := &http.Server{Handler: mux}
+	go monitorHeartbeat(server, heartbeat)
+
+	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatal(err)
+	}
+}
+
+func monitorHeartbeat(server *http.Server, state *heartbeatState) {
+	ticker := time.NewTicker(heartbeatInterval / 2)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if !state.Stale(heartbeatTimeout) {
+			continue
+		}
+
+		log.Println("No heartbeat received for 2 minutes; shutting down.")
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		_ = server.Shutdown(ctx)
+		cancel()
+		return
+	}
+}
+
+func launchIfAlreadyRunning() bool {
+	client := &http.Client{Timeout: 750 * time.Millisecond}
+	response, err := client.Get("http://127.0.0.1:8765/api/presets")
+	if err != nil {
+		return false
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return false
+	}
+
+	if err := openBrowser("http://127.0.0.1:8765"); err != nil {
+		log.Printf("browser launch failed: %v", err)
+	}
+	log.Println("PresetDock is already running; reopened the browser.")
+	return true
 }
 
 func executableDir() (string, error) {
@@ -115,6 +241,24 @@ func executableDir() (string, error) {
 	}
 
 	return filepath.Dir(executablePath), nil
+}
+
+func resolvePresetsDir(exeDir string) string {
+	if strings.Contains(strings.ToLower(exeDir), "go-build") {
+		if workingDir, err := os.Getwd(); err == nil {
+			workingPresetsDir := filepath.Join(workingDir, "presets")
+			if pathExists(workingPresetsDir) {
+				return workingPresetsDir
+			}
+		}
+	}
+
+	return filepath.Join(exeDir, "presets")
+}
+
+func pathExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 func ensurePresetsDir(presetsDir string) error {
@@ -144,6 +288,35 @@ func ensurePresetsDir(presetsDir string) error {
 
 	data = append(data, '\n')
 	return os.WriteFile(examplePath, data, 0o644)
+}
+
+func savePreset(presetsDir string, originalID string, preset Preset) (Preset, error) {
+	if preset.ID == "" {
+		preset.ID = originalID
+	}
+	if err := validatePreset(preset); err != nil {
+		return Preset{}, err
+	}
+
+	targetPath := filepath.Join(presetsDir, preset.ID+".json")
+	data, err := json.MarshalIndent(preset, "", "  ")
+	if err != nil {
+		return Preset{}, err
+	}
+	data = append(data, '\n')
+
+	if err := os.WriteFile(targetPath, data, 0o644); err != nil {
+		return Preset{}, err
+	}
+
+	if originalID != "" && originalID != preset.ID {
+		oldPath := filepath.Join(presetsDir, originalID+".json")
+		if err := os.Remove(oldPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return Preset{}, err
+		}
+	}
+
+	return preset, nil
 }
 
 func loadPresets(presetsDir string) ([]Preset, error) {
@@ -178,6 +351,36 @@ func loadPresets(presetsDir string) ([]Preset, error) {
 func loadPresetByID(presetsDir, id string) (Preset, error) {
 	presetPath := filepath.Join(presetsDir, id+".json")
 	return readPreset(presetPath)
+}
+
+func validatePreset(preset Preset) error {
+	if err := validatePresetID(preset.ID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(preset.Name) == "" {
+		return errors.New("preset name is required")
+	}
+	if strings.TrimSpace(preset.Command) == "" {
+		return errors.New("preset command is required")
+	}
+	return nil
+}
+
+func validatePresetID(id string) error {
+	if strings.TrimSpace(id) == "" {
+		return errors.New("preset id is required")
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.':
+		default:
+			return errors.New("preset id may only contain letters, numbers, dots, underscores, and dashes")
+		}
+	}
+	return nil
 }
 
 func readPreset(path string) (Preset, error) {

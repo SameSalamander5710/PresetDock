@@ -42,15 +42,21 @@ Scan `presets/*.json` fresh on each request — no caching needed at this scale.
 ## Backend requirements (`backend/main.go`)
 - Locate the `presets/` folder relative to the **executable's own path** (`os.Executable()`), not the current working directory, so it works regardless of how the exe is launched. If missing, create it and write the example preset above so first run isn't empty.
 - Serve the embedded `frontend/` directory at `/`.
+- Add `POST /api/heartbeat` and track the last heartbeat timestamp in memory.
+- Start a background shutdown monitor: if no heartbeat arrives for about 2 minutes, the server exits cleanly.
 - `GET /api/presets` → JSON array of all parsed presets, each including its `id`.
+- `POST /api/presets` → create a new preset JSON file from a submitted preset object.
+- `PUT /api/presets/{id}` → update an existing preset JSON file, including rename support if the `id` changes.
 - `POST /api/run/{id}` → look up the preset, run:
   `cmd /c start cmd /k <command>` — opens a new terminal window that stays open, so llama.cpp's streaming output is visible and interactive.
 - Bind to `127.0.0.1:8765` (fixed port).
 - After the listener starts, auto-open the default browser to `http://127.0.0.1:8765` via `cmd /c start <url>`.
 
 ## Frontend requirements
+- Send a lightweight heartbeat to `POST /api/heartbeat` every 30 seconds while the page is open.
 - On load, `fetch('/api/presets')` and render one card per preset: name, model, tags, description, the full command shown in a monospace block (visible, not hidden/truncated), and a Run button.
 - Run button calls `POST /api/run/{id}`; show simple success/fail feedback (e.g. button label change or small toast) — no complex state needed.
+- Add a preset editor in the UI so presets can be created and edited directly from the browser, including all preset fields that are currently supported by the JSON format.
 - Clean but simple styling. No frameworks, no bundler — must be servable as-is via `go:embed`.
 
 ## Build & run
@@ -60,7 +66,6 @@ Scan `presets/*.json` fresh on each request — no caching needed at this scale.
 - `build.bat`: a one-line wrapper around the release build command.
 
 ## Explicit non-goals for this version
-- No preset-editing UI (hand-authoring JSON files is fine for v1).
 - No authentication, no network exposure beyond localhost.
 - No `.bat` export/fallback (can be added later as a separate feature if wanted).
 

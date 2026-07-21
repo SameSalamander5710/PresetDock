@@ -79,6 +79,29 @@ h1 {
   margin-top: 28px;
 }
 
+.panel {
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: var(--radius);
+  background: rgba(10, 17, 30, 0.75);
+  box-shadow: var(--shadow);
+}
+
+.panel-head {
+  margin-bottom: 16px;
+}
+
+.panel-head h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.panel-head p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
 .status {
   min-height: 1.4rem;
   margin-bottom: 16px;
@@ -102,6 +125,49 @@ h1 {
   box-shadow: var(--shadow);
   backdrop-filter: blur(10px);
   animation: rise 420ms ease both;
+}
+
+.preset-form {
+  margin-bottom: 18px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.field-label {
+  color: var(--muted);
+  font-size: 0.86rem;
+  letter-spacing: 0.02em;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(8, 17, 28, 0.9);
+  color: var(--text);
+  padding: 11px 12px;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 88px;
 }
 
 .card-header {
@@ -161,7 +227,13 @@ h1 {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: auto;
+}
+
+.form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 button {
@@ -194,6 +266,10 @@ button:disabled {
   font-size: 0.92rem;
 }
 
+.form-footer .feedback {
+  flex: 1;
+}
+
 .feedback.error {
   color: var(--danger);
 }
@@ -224,7 +300,17 @@ button:disabled {
     padding-top: 24px;
   }
 
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
   .card {
     padding: 16px;
+  }
+
+  .form-footer,
+  .card-header {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
