@@ -209,9 +209,9 @@ h1 {
   align-items: center;
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(114, 214, 201, 0.25);
-  background: rgba(114, 214, 201, 0.12);
-  color: var(--accent);
+  border: 1px solid rgba(255, 177, 103, 0.3);
+  background: rgba(255, 177, 103, 0.12);
+  color: #ffbe7a;
   font-size: 0.76rem;
   text-transform: lowercase;
   letter-spacing: 0.04em;
@@ -224,9 +224,9 @@ h1 {
 }
 
 .engine-llama-cli {
-  border-color: rgba(114, 214, 201, 0.25);
-  background: rgba(114, 214, 201, 0.12);
-  color: var(--accent);
+  border-color: rgba(255, 177, 103, 0.3);
+  background: rgba(255, 177, 103, 0.12);
+  color: #ffbe7a;
 }
 
 .danger-button {
