@@ -1,6 +1,6 @@
 {
-  "id": "qwen36-27b-mtp-q6k",
   "name": "Qwen3.6-27B-MTP (Q6_K)",
+  "engine": "llama-server",
   "model": "unsloth/Qwen3.6-27B-MTP-GGUF:Q6_K",
   "tags": [
     "qwen",

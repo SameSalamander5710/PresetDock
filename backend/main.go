@@ -29,12 +29,17 @@ const (
 var embeddedFrontend embed.FS
 
 type Preset struct {
-	ID          string   `json:"id"`
 	Name        string   `json:"name"`
+	Engine      string   `json:"engine,omitempty"`
 	Model       string   `json:"model"`
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
 	Command     string   `json:"command"`
+}
+
+type PresetView struct {
+	ID string `json:"id"`
+	Preset
 }
 
 type heartbeatState struct {
@@ -104,7 +109,7 @@ func main() {
 				return
 			}
 
-			savedPreset, err := savePreset(presetsDir, "", preset)
+			savedPreset, err := savePreset(presetsDir, "", preset, false)
 			if err != nil {
 				httpError(w, http.StatusBadRequest, err.Error())
 				return
@@ -130,15 +135,26 @@ func main() {
 				return
 			}
 
-			savedPreset, err := savePreset(presetsDir, id, preset)
+			savedPreset, err := savePreset(presetsDir, id, preset, true)
 			if err != nil {
 				httpError(w, http.StatusBadRequest, err.Error())
 				return
 			}
 
 			writeJSON(w, http.StatusOK, savedPreset)
+		case http.MethodDelete:
+			if err := deletePreset(presetsDir, id); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					http.NotFound(w, r)
+					return
+				}
+				httpError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+
+			w.WriteHeader(http.StatusNoContent)
 		default:
-			methodNotAllowed(w, http.MethodPut)
+			methodNotAllowed(w, http.MethodPut+", "+http.MethodDelete)
 		}
 	}))
 	mux.Handle("/api/run/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -275,6 +291,7 @@ func ensurePresetsDir(presetsDir string) error {
 
 	example := Preset{
 		Name:        "Gemma 2 9B Q4",
+		Engine:      "llama-cli",
 		Model:       "gemma-2-9b-it-Q4_K_M.gguf",
 		Tags:        []string{"gemma", "9b", "q4"},
 		Description: "General purpose, balanced speed/quality",
@@ -290,42 +307,46 @@ func ensurePresetsDir(presetsDir string) error {
 	return os.WriteFile(examplePath, data, 0o644)
 }
 
-func savePreset(presetsDir string, originalID string, preset Preset) (Preset, error) {
-	if preset.ID == "" {
-		preset.ID = originalID
+func savePreset(presetsDir string, targetID string, preset Preset, overwrite bool) (PresetView, error) {
+	if targetID == "" {
+		targetID = slugifyPresetID(preset.Name)
+	}
+	if err := validatePresetID(targetID); err != nil {
+		return PresetView{}, err
 	}
 	if err := validatePreset(preset); err != nil {
-		return Preset{}, err
+		return PresetView{}, err
 	}
 
-	targetPath := filepath.Join(presetsDir, preset.ID+".json")
+	targetPath := filepath.Join(presetsDir, targetID+".json")
+	if !overwrite {
+		if _, err := os.Stat(targetPath); err == nil {
+			return PresetView{}, fmt.Errorf("preset %s already exists", targetID)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return PresetView{}, err
+		}
+	}
+
 	data, err := json.MarshalIndent(preset, "", "  ")
 	if err != nil {
-		return Preset{}, err
+		return PresetView{}, err
 	}
 	data = append(data, '\n')
 
 	if err := os.WriteFile(targetPath, data, 0o644); err != nil {
-		return Preset{}, err
+		return PresetView{}, err
 	}
 
-	if originalID != "" && originalID != preset.ID {
-		oldPath := filepath.Join(presetsDir, originalID+".json")
-		if err := os.Remove(oldPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return Preset{}, err
-		}
-	}
-
-	return preset, nil
+	return PresetView{ID: targetID, Preset: preset}, nil
 }
 
-func loadPresets(presetsDir string) ([]Preset, error) {
+func loadPresets(presetsDir string) ([]PresetView, error) {
 	entries, err := os.ReadDir(presetsDir)
 	if err != nil {
 		return nil, err
 	}
 
-	presets := make([]Preset, 0, len(entries))
+	presets := make([]PresetView, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
 			continue
@@ -337,8 +358,10 @@ func loadPresets(presetsDir string) ([]Preset, error) {
 			continue
 		}
 
-		preset.ID = strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		presets = append(presets, preset)
+		presets = append(presets, PresetView{
+			ID:     strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())),
+			Preset: preset,
+		})
 	}
 
 	sort.Slice(presets, func(i, j int) bool {
@@ -353,10 +376,14 @@ func loadPresetByID(presetsDir, id string) (Preset, error) {
 	return readPreset(presetPath)
 }
 
-func validatePreset(preset Preset) error {
-	if err := validatePresetID(preset.ID); err != nil {
+func deletePreset(presetsDir, id string) error {
+	if err := validatePresetID(id); err != nil {
 		return err
 	}
+	return os.Remove(filepath.Join(presetsDir, id+".json"))
+}
+
+func validatePreset(preset Preset) error {
 	if strings.TrimSpace(preset.Name) == "" {
 		return errors.New("preset name is required")
 	}
@@ -364,6 +391,35 @@ func validatePreset(preset Preset) error {
 		return errors.New("preset command is required")
 	}
 	return nil
+}
+
+func slugifyPresetID(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	lastWasDash := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			builder.WriteRune(r)
+			lastWasDash = false
+		case r == '-' || r == '_' || r == '.':
+			if !lastWasDash {
+				builder.WriteRune('-')
+				lastWasDash = true
+			}
+		default:
+			if !lastWasDash {
+				builder.WriteRune('-')
+				lastWasDash = true
+			}
+		}
+	}
+
+	return strings.Trim(builder.String(), "-")
 }
 
 func validatePresetID(id string) error {

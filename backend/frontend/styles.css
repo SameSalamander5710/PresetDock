@@ -125,7 +125,7 @@ h1 {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: 1fr;
   gap: 18px;
 }
 
@@ -140,6 +140,7 @@ h1 {
   box-shadow: var(--shadow);
   backdrop-filter: blur(10px);
   animation: rise 420ms ease both;
+  width: 100%;
 }
 
 .field-grid {
@@ -193,6 +194,50 @@ h1 {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.engine-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(114, 214, 201, 0.25);
+  background: rgba(114, 214, 201, 0.12);
+  color: var(--accent);
+  font-size: 0.76rem;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+
+.engine-llama-server {
+  border-color: rgba(255, 177, 103, 0.3);
+  background: rgba(255, 177, 103, 0.12);
+  color: #ffbe7a;
+}
+
+.engine-llama-cli {
+  border-color: rgba(114, 214, 201, 0.25);
+  background: rgba(114, 214, 201, 0.12);
+  color: var(--accent);
+}
+
+.danger-button {
+  color: #fff4f4;
+  background: linear-gradient(135deg, #d95f5f, #ff8f8f);
+  border: 1px solid rgba(255, 143, 143, 0.35);
+  box-shadow: none;
+}
+
+.danger-button:hover {
+  transform: translateY(-1px);
 }
 
 .card h2 {

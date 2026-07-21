@@ -31,6 +31,7 @@ One JSON file per preset in `presets/`. Filename (minus `.json`) is its `id`.
 ```json
 {
   "name": "Gemma 2 9B Q4",
+  "engine": "llama-cli",
   "model": "gemma-2-9b-it-Q4_K_M.gguf",
   "tags": ["gemma", "9b", "q4"],
   "description": "General purpose, balanced speed/quality",
@@ -47,6 +48,7 @@ Scan `presets/*.json` fresh on each request — no caching needed at this scale.
 - `GET /api/presets` → JSON array of all parsed presets, each including its `id`.
 - `POST /api/presets` → create a new preset JSON file from a submitted preset object.
 - `PUT /api/presets/{id}` → update an existing preset JSON file, including rename support if the `id` changes.
+- `DELETE /api/presets/{id}` → remove the preset JSON file.
 - `POST /api/run/{id}` → look up the preset, run:
   `cmd /c start cmd /k <command>` — opens a new terminal window that stays open, so llama.cpp's streaming output is visible and interactive.
 - Bind to `127.0.0.1:8765` (fixed port).
@@ -56,8 +58,10 @@ Scan `presets/*.json` fresh on each request — no caching needed at this scale.
 - Send a lightweight heartbeat to `POST /api/heartbeat` every 30 seconds while the page is open.
 - On load, `fetch('/api/presets')` and render one card per preset: name, model, tags, description, the full command shown in a monospace block (visible, not hidden/truncated), and a Run button.
 - Keep the main list in the old card-style UI. Add a `Create` button that opens a preset editor only when pressed, and an `Edit` button next to each preset's Run button that opens the same editor prefilled for that preset.
+- Render the cards in a single vertical column so each card is wide enough to read long commands comfortably.
 - Run button calls `POST /api/run/{id}`; show simple success/fail feedback (e.g. button label change or small toast) — no complex state needed.
-- The create/edit editor should include all preset fields supported by the JSON format and remain hidden until explicitly opened.
+- The create/edit editor should include all preset fields supported by the JSON format except `id`, and remain hidden until explicitly opened.
+- Add a delete button on each preset card that calls `DELETE /api/presets/{id}`.
 - Clean but simple styling. No frameworks, no bundler — must be servable as-is via `go:embed`.
 
 ## Build & run

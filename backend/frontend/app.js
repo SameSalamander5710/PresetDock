@@ -9,16 +9,16 @@ const editorFeedback = document.getElementById('preset-editor-feedback');
 const editorCloseButton = document.getElementById('editor-close');
 const editorCancelButton = document.getElementById('editor-cancel');
 const editorSaveButton = document.getElementById('editor-save');
-const idInput = document.getElementById('preset-id');
 const nameInput = document.getElementById('preset-name');
+const engineInput = document.getElementById('preset-engine');
 const modelInput = document.getElementById('preset-model');
 const tagsInput = document.getElementById('preset-tags');
 const descriptionInput = document.getElementById('preset-description');
 const commandInput = document.getElementById('preset-command');
 
 let activePresetId = '';
-let autoSuggestId = true;
 let presetsCache = [];
+let selectedEngine = '';
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -71,6 +71,14 @@ function createTag(text) {
   return tag;
 }
 
+function createEngineBadge(engine) {
+  const badge = document.createElement('span');
+  const normalizedEngine = (engine || 'unknown').toLowerCase();
+  badge.className = `engine-badge engine-${slugify(normalizedEngine) || 'unknown'}`;
+  badge.textContent = normalizedEngine;
+  return badge;
+}
+
 function renderEmpty(message) {
   presetsEl.innerHTML = '';
   const empty = document.createElement('div');
@@ -81,8 +89,8 @@ function renderEmpty(message) {
 
 function readEditorValues() {
   return {
-    id: idInput.value.trim(),
     name: nameInput.value.trim(),
+    engine: engineInput.value.trim(),
     model: modelInput.value.trim(),
     tags: textToTags(tagsInput.value),
     description: descriptionInput.value.trim(),
@@ -91,8 +99,8 @@ function readEditorValues() {
 }
 
 function fillEditor(preset) {
-  idInput.value = preset.id || '';
   nameInput.value = preset.name || '';
+  engineInput.value = preset.engine || '';
   modelInput.value = preset.model || '';
   tagsInput.value = tagsToText(preset.tags);
   descriptionInput.value = preset.description || '';
@@ -102,15 +110,15 @@ function fillEditor(preset) {
 function openEditor(preset) {
   const isExisting = Boolean(preset && preset.id);
   activePresetId = isExisting ? preset.id : '';
-  autoSuggestId = !isExisting;
+  selectedEngine = preset && preset.engine ? preset.engine : '';
 
-  dialogTitle.textContent = isExisting ? `Edit ${preset.id}` : 'Create preset';
+  dialogTitle.textContent = isExisting ? `Edit ${preset.name || preset.id}` : 'Create preset';
   dialogSubtitle.textContent = isExisting
     ? 'Update the preset fields and save the JSON file.'
     : 'Fill out the fields and create a new preset JSON file.';
   editorSaveButton.textContent = isExisting ? 'Save preset' : 'Create preset';
 
-  fillEditor(preset || { id: '', name: '', model: '', tags: [], description: '', command: '' });
+  fillEditor(preset || { name: '', engine: '', model: '', tags: [], description: '', command: '' });
   editorFeedback.classList.remove('error');
   editorFeedback.textContent = '';
 
@@ -120,11 +128,7 @@ function openEditor(preset) {
     dialog.setAttribute('open', '');
   }
 
-  if (!isExisting) {
-    nameInput.focus();
-  } else {
-    idInput.focus();
-  }
+  nameInput.focus();
 }
 
 function closeEditor() {
@@ -146,10 +150,15 @@ function createPresetCard(preset, index) {
   const titleWrap = document.createElement('div');
   const title = document.createElement('h2');
   title.textContent = preset.name || preset.id;
+  const metaRow = document.createElement('div');
+  metaRow.className = 'meta-row';
+
   const model = document.createElement('p');
   model.className = 'model';
   model.textContent = preset.model || 'No model specified';
-  titleWrap.append(title, model);
+
+  metaRow.append(model, createEngineBadge(preset.engine));
+  titleWrap.append(title, metaRow);
 
   const actionButtons = document.createElement('div');
   actionButtons.className = 'action-buttons';
@@ -163,7 +172,12 @@ function createPresetCard(preset, index) {
   editButton.textContent = 'Edit';
   editButton.className = 'secondary-button';
 
-  actionButtons.append(runButton, editButton);
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.textContent = 'Delete';
+  deleteButton.className = 'danger-button';
+
+  actionButtons.append(runButton, editButton, deleteButton);
   header.append(titleWrap, actionButtons);
 
   const description = document.createElement('p');
@@ -219,6 +233,38 @@ function createPresetCard(preset, index) {
     openEditor(preset);
   });
 
+  deleteButton.addEventListener('click', async () => {
+    if (!window.confirm(`Delete preset ${preset.name || preset.id}?`)) {
+      return;
+    }
+
+    const originalLabel = deleteButton.textContent;
+    deleteButton.disabled = true;
+    deleteButton.textContent = 'Deleting...';
+    feedback.classList.remove('error');
+    feedback.textContent = '';
+
+    try {
+      const response = await fetch(`/api/presets/${encodeURIComponent(preset.id)}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok && response.status !== 204) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || `Request failed with status ${response.status}`);
+      }
+
+      setStatus('Preset deleted.');
+      await loadPresets();
+    } catch (error) {
+      feedback.classList.add('error');
+      feedback.textContent = error instanceof Error ? error.message : 'Delete failed.';
+    } finally {
+      deleteButton.disabled = false;
+      deleteButton.textContent = originalLabel;
+    }
+  });
+
   card.append(header, description, tags, command, feedback);
   return card;
 }
@@ -255,7 +301,7 @@ async function loadPresets() {
 }
 
 createButton.addEventListener('click', () => {
-  openEditor({ id: '', name: '', model: '', tags: [], description: '', command: '' });
+  openEditor({ name: '', engine: '', model: '', tags: [], description: '', command: '' });
 });
 
 editorCloseButton.addEventListener('click', closeEditor);
@@ -266,30 +312,23 @@ dialog.addEventListener('cancel', () => {
   editorFeedback.textContent = '';
 });
 
-nameInput.addEventListener('input', () => {
-  if (!autoSuggestId || idInput.value.trim()) {
-    return;
-  }
-
-  idInput.value = slugify(nameInput.value);
-});
-
-idInput.addEventListener('input', () => {
-  autoSuggestId = false;
+engineInput.addEventListener('input', () => {
+  selectedEngine = engineInput.value.trim();
 });
 
 editorForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const payload = readEditorValues();
-  const resolvedId = payload.id || slugify(payload.name);
-  if (!resolvedId) {
+  if (!payload.name) {
     editorFeedback.classList.add('error');
-    editorFeedback.textContent = 'Preset ID or name is required.';
+    editorFeedback.textContent = 'Preset name is required.';
     return;
   }
 
-  payload.id = resolvedId;
+  if (!payload.engine) {
+    payload.engine = selectedEngine || 'unknown';
+  }
 
   const isEditing = Boolean(activePresetId);
   const endpoint = isEditing ? `/api/presets/${encodeURIComponent(activePresetId)}` : '/api/presets';

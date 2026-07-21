@@ -1,6 +1,6 @@
 {
-  "id": "example",
   "name": "Gemma 3 4B QAT (Vulkan1, draft-assisted)",
+  "engine": "llama-server",
   "model": "unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL",
   "tags": [
     "gemma",
