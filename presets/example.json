@@ -1,0 +1,11 @@
+{
+  "name": "Gemma 2 9B Q4",
+  "model": "gemma-2-9b-it-Q4_K_M.gguf",
+  "tags": [
+    "gemma",
+    "9b",
+    "q4"
+  ],
+  "description": "General purpose, balanced speed/quality",
+  "command": "llama-cli.exe -m models/gemma-2-9b-it-Q4_K_M.gguf -p \"You are a helpful assistant\" -n 512"
+}

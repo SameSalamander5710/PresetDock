@@ -1,0 +1,230 @@
+:root {
+  color-scheme: dark;
+  --bg: #07111f;
+  --bg-soft: #0d1728;
+  --panel: rgba(14, 24, 40, 0.88);
+  --panel-border: rgba(148, 163, 184, 0.18);
+  --text: #e5eefb;
+  --muted: #9db0c8;
+  --accent: #72d6c9;
+  --accent-strong: #32b8aa;
+  --danger: #ff8f8f;
+  --shadow: 0 22px 70px rgba(0, 0, 0, 0.34);
+  --radius: 20px;
+  font-family: "Segoe UI", "Aptos", "Trebuchet MS", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(114, 214, 201, 0.16), transparent 30%),
+    radial-gradient(circle at 85% 15%, rgba(50, 184, 170, 0.12), transparent 28%),
+    linear-gradient(180deg, #050b14 0%, var(--bg) 45%, #07172a 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.75), transparent 88%);
+  pointer-events: none;
+}
+
+.shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 40px 0 56px;
+}
+
+.hero {
+  padding: 28px 0 18px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2.8rem, 7vw, 5rem);
+  line-height: 0.95;
+}
+
+.lede {
+  max-width: 62ch;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.content {
+  margin-top: 28px;
+}
+
+.status {
+  min-height: 1.4rem;
+  margin-bottom: 16px;
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(18, 31, 51, 0.96), rgba(10, 17, 30, 0.96));
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+  animation: rise 420ms ease both;
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.model {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.description {
+  margin: 0;
+  color: #d7e2ef;
+  line-height: 1.55;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(114, 214, 201, 0.12);
+  border: 1px solid rgba(114, 214, 201, 0.22);
+  color: var(--accent);
+  font-size: 0.82rem;
+}
+
+.command {
+  margin: 0;
+  padding: 14px;
+  border-radius: 14px;
+  background: #08111c;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  color: #d7f8f1;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 18px;
+  color: #031018;
+  background: linear-gradient(135deg, var(--accent), #9ef0e8);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+  box-shadow: 0 12px 30px rgba(114, 214, 201, 0.22);
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: progress;
+  opacity: 0.75;
+  transform: none;
+}
+
+.feedback {
+  min-height: 1.1rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.feedback.error {
+  color: var(--danger);
+}
+
+.empty {
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px dashed rgba(157, 176, 200, 0.3);
+  color: var(--muted);
+  background: rgba(8, 16, 27, 0.5);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    width: min(100% - 20px, 1180px);
+    padding-top: 24px;
+  }
+
+  .card {
+    padding: 16px;
+  }
+}

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PresetDock</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Local llama.cpp launcher</p>
+        <h1>PresetDock</h1>
+        <p class="lede">
+          Pick a preset, inspect the exact command, and launch it into a fresh terminal.
+        </p>
+      </section>
+
+      <section class="content">
+        <div id="status" class="status" role="status" aria-live="polite">Loading presets...</div>
+        <div id="presets" class="grid" aria-live="polite"></div>
+      </section>
+    </main>
+  </body>
+</html>
