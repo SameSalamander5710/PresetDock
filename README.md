@@ -5,7 +5,7 @@ PresetDock is a local-only Windows launcher for llama.cpp command presets.
 ## Run
 
 - Dev loop: `go run ./backend`
-- Release build: `go build -ldflags "-H=windowsgui" -o LlamaLauncher.exe ./backend`
+- Release build: `go build -ldflags "-H=windowsgui" -o PresetDock.exe ./backend`
 - Optional wrapper: `build.bat`
 
 ## Presets
