@@ -1,11 +1,7 @@
 {
-  "name": "Gemma 2 9B Q4",
-  "model": "gemma-2-9b-it-Q4_K_M.gguf",
-  "tags": [
-    "gemma",
-    "9b",
-    "q4"
-  ],
-  "description": "General purpose, balanced speed/quality",
-  "command": "llama-cli.exe -m models/gemma-2-9b-it-Q4_K_M.gguf -p \"You are a helpful assistant\" -n 512"
+  "name": "Gemma 3 4B QAT (Vulkan1, draft-assisted)",
+  "model": "unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL",
+  "tags": ["gemma", "4b", "qat", "server", "vulkan", "speculative-decoding"],
+  "description": "Server mode, full GPU offload on Vulkan1 only, self-speculative draft decoding",
+  "command": "set GGML_VK_VISIBLE_DEVICES=1 && llama-server -hf unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL --spec-type draft-mtp --spec-draft-n-max 4 -ngl 999 --split-mode layer -ts 0/100 --flash-attn on -t 6 -c 8192 --temp 0.3 --top-p 0.9 --top-k 40 --mlock --host 127.0.0.1 --port 8080"
 }
