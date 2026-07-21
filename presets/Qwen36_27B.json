@@ -1,0 +1,14 @@
+{
+  "id": "qwen36-27b-mtp-q6k",
+  "name": "Qwen3.6-27B-MTP (Q6_K)",
+  "model": "unsloth/Qwen3.6-27B-MTP-GGUF:Q6_K",
+  "tags": [
+    "qwen",
+    "27b",
+    "mtp",
+    "server",
+    "flash-attn"
+  ],
+  "description": "Qwen3.6-27B-MTP server with draft MTP speculative decoding.",
+  "command": "llama-server -hf unsloth/Qwen3.6-27B-MTP-GGUF:Q6_K -ngl 999 --split-mode layer -ts 35/65 -c 131072 --parallel 1 --flash-attn on -ctk q8_0 -ctv q8_0 --spec-type draft-mtp --spec-draft-n-max 2 --temp 0.7 --top-p 0.8 --top-k 20 --presence-penalty 0.0 --min-p 0.0 --jinja --host 127.0.0.1 --port 8080"
+}
