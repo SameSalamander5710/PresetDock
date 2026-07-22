@@ -1,14 +1,12 @@
 {
-  "name": "Example: Gemma 4 E4B QAT MTP",
+  "name": "Gemma 4 E4B (Vulkan1)",
   "engine": "llama-server",
   "model": "unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL",
   "tags": [
     "gemma",
-    "4b",
-    "qat",
-    "server",
-    "speculative-decoding"
+    "E4B",
+    "QAT"
   ],
-  "description": "Server mode, self-speculative draft decoding",
-  "command": "llama-server -hf unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL --spec-type draft-mtp --spec-draft-n-max 4 -ngl 999 --flash-attn on -c 8192 --temp 0.3 --top-p 0.9 --top-k 40 --mlock --host 127.0.0.1 --port 8080"
+  "description": "Server mode, full GPU offload on Vulkan1 only",
+  "command": "set GGML_VK_VISIBLE_DEVICES=1 \u0026\u0026 llama-server -hf unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL --spec-type draft-mtp --spec-draft-n-max 4 -ngl 999 --split-mode layer -ts 0/100 --flash-attn on -c 8192 --temp 1.0 --top-p 0.95 --top-k 64 --mlock --host 127.0.0.1 --port 8080"
 }

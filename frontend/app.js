@@ -17,9 +17,261 @@ const tagsInput = document.getElementById('preset-tags');
 const descriptionInput = document.getElementById('preset-description');
 const commandInput = document.getElementById('preset-command');
 
+// Search / filter elements
+const searchInput = document.getElementById('search-input');
+const searchClear = document.getElementById('search-clear');
+const searchSuggestions = document.getElementById('search-suggestions');
+const filterChipsEl = document.getElementById('filter-chips');
+const filterCountEl = document.getElementById('filter-count');
+
 let activePresetId = '';
 let presetsCache = [];
 let selectedEngine = '';
+
+// Active filters: array of { type: 'tag' | 'engine', value: string }
+let activeFilters = [];
+let suggestionHighlightIndex = -1;
+let currentSuggestions = [];
+
+// --- Search / Filter Logic ---
+
+function gatherAllTagsEngines(presets) {
+  const tags = new Set();
+  const engines = new Set();
+  (presets || []).forEach((p) => {
+    (p.tags || []).forEach((t) => tags.add(t.toLowerCase()));
+    if (p.engine) engines.add(p.engine.toLowerCase());
+  });
+  return { tags: [...tags].sort(), engines: [...engines].sort() };
+}
+
+function presetsMatchFilters(presets) {
+  if (activeFilters.length === 0) return presets;
+  return presets.filter((preset) => {
+    const pTags = (preset.tags || []).map((t) => t.toLowerCase());
+    const pEngine = (preset.engine || '').toLowerCase();
+    return activeFilters.every((f) => {
+      if (f.type === 'tag') return pTags.includes(f.value.toLowerCase());
+      if (f.type === 'engine') return pEngine === f.value.toLowerCase();
+      return false;
+    });
+  });
+}
+
+function presetsMatchText(presets, text) {
+  if (!text) return presets;
+  const q = text.toLowerCase().trim();
+  if (!q) return presets;
+  return presets.filter((p) => {
+    const name = (p.name || '').toLowerCase();
+    const engine = (p.engine || '').toLowerCase();
+    const tags = (p.tags || []).map((t) => t.toLowerCase());
+    const model = (p.model || '').toLowerCase();
+    const desc = (p.description || '').toLowerCase();
+    if (name.includes(q) || engine.includes(q) || model.includes(q) || desc.includes(q)) return true;
+    if (tags.some((t) => t.includes(q))) return true;
+    return false;
+  });
+}
+
+function applyFiltersAndRender() {
+  let filtered = presetsMatchFilters(presetsCache);
+  const searchText = searchInput.value.trim();
+  filtered = presetsMatchText(filtered, searchText);
+  renderPresets(filtered);
+
+  // Update clear button visibility
+  searchClear.hidden = !searchInput.value;
+
+  // Update filter count
+  const total = presetsCache.length;
+  const shown = filtered.length;
+  if (activeFilters.length > 0 || searchText) {
+    filterCountEl.textContent = `Showing ${shown} of ${total} preset${total === 1 ? '' : 's'}`;
+  } else {
+    filterCountEl.textContent = '';
+  }
+
+  // Update status
+  if (activeFilters.length > 0 || searchText) {
+    setStatus(`Showing ${shown} of ${total}.`);
+  } else {
+    setStatus(`Loaded ${total} preset${total === 1 ? '' : 's'}.`);
+  }
+}
+
+function renderFilterChips() {
+  filterChipsEl.innerHTML = '';
+  activeFilters.forEach((f, idx) => {
+    const chip = document.createElement('span');
+    chip.className = `filter-chip ${f.type}-chip`;
+    chip.textContent = f.type === 'tag' ? `#${f.value}` : f.value;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'filter-chip-remove';
+    removeBtn.setAttribute('aria-label', `Remove ${f.value} filter`);
+    removeBtn.textContent = '\u00d7';
+    removeBtn.addEventListener('click', () => {
+      activeFilters.splice(idx, 1);
+      applyFiltersAndRender();
+      renderFilterChips();
+      updateSuggestions();
+    });
+
+    chip.appendChild(removeBtn);
+    filterChipsEl.appendChild(chip);
+  });
+}
+
+function addFilter(type, value) {
+  const normalized = value.toLowerCase().trim();
+  if (!normalized) return;
+  // Check if already active
+  if (activeFilters.some((f) => f.type === type && f.value.toLowerCase() === normalized)) return;
+  activeFilters.push({ type, value: normalized });
+  applyFiltersAndRender();
+  renderFilterChips();
+  // Clear search input and suggestions when a filter is added
+  searchInput.value = '';
+  searchClear.hidden = true;
+  hideSuggestions();
+}
+
+function getSuggestions(query) {
+  const q = query.toLowerCase().trim();
+  if (!q) return [];
+  const { tags, engines } = gatherAllTagsEngines(presetsCache);
+  const results = [];
+
+  // Only suggest tags/engines that aren't already active filters
+  const activeTagValues = new Set(activeFilters.filter((f) => f.type === 'tag').map((f) => f.value.toLowerCase()));
+  const activeEngineValues = new Set(activeFilters.filter((f) => f.type === 'engine').map((f) => f.value.toLowerCase()));
+
+  tags.forEach((t) => {
+    if (!activeTagValues.has(t) && t.includes(q)) {
+      results.push({ type: 'tag', value: t });
+    }
+  });
+  engines.forEach((e) => {
+    if (!activeEngineValues.has(e) && e.includes(q)) {
+      results.push({ type: 'engine', value: e });
+    }
+  });
+
+  // Limit to 10 suggestions
+  return results.slice(0, 10);
+}
+
+function renderSuggestions() {
+  const query = searchInput.value.trim();
+  currentSuggestions = query ? getSuggestions(query) : [];
+  suggestionHighlightIndex = -1;
+
+  searchSuggestions.innerHTML = '';
+  if (currentSuggestions.length === 0) {
+    hideSuggestions();
+    return;
+  }
+
+  currentSuggestions.forEach((s, idx) => {
+    const item = document.createElement('div');
+    item.className = 'suggestion-item';
+    item.setAttribute('role', 'option');
+
+    const typeBadge = document.createElement('span');
+    typeBadge.className = `suggestion-type ${s.type}`;
+    typeBadge.textContent = s.type;
+
+    const label = document.createElement('span');
+    label.className = 'suggestion-label';
+    // Highlight matching portion
+    const q = query.toLowerCase();
+    const val = s.value;
+    const idx_pos = val.indexOf(q);
+    if (idx_pos >= 0) {
+      label.textContent = val;
+    } else {
+      label.textContent = val;
+    }
+
+    item.append(typeBadge, label);
+    item.addEventListener('click', () => {
+      addFilter(s.type, s.value);
+    });
+    searchSuggestions.appendChild(item);
+  });
+
+  searchSuggestions.classList.add('visible');
+}
+
+function hideSuggestions() {
+  searchSuggestions.classList.remove('visible');
+  currentSuggestions = [];
+  suggestionHighlightIndex = -1;
+}
+
+function updateSuggestions() {
+  renderSuggestions();
+}
+
+// Search input events
+let searchDebounceTimer;
+searchInput.addEventListener('input', () => {
+  searchClear.hidden = !searchInput.value;
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    applyFiltersAndRender();
+    updateSuggestions();
+  }, 120);
+});
+
+searchInput.addEventListener('focus', () => {
+  updateSuggestions();
+});
+
+searchInput.addEventListener('keydown', (e) => {
+  const items = searchSuggestions.querySelectorAll('.suggestion-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    suggestionHighlightIndex = Math.min(suggestionHighlightIndex + 1, items.length - 1);
+    items.forEach((it, i) => it.classList.toggle('highlighted', i === suggestionHighlightIndex));
+    if (items[suggestionHighlightIndex]) items[suggestionHighlightIndex].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    suggestionHighlightIndex = Math.max(suggestionHighlightIndex - 1, 0);
+    items.forEach((it, i) => it.classList.toggle('highlighted', i === suggestionHighlightIndex));
+    if (items[suggestionHighlightIndex]) items[suggestionHighlightIndex].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter') {
+    if (suggestionHighlightIndex >= 0 && suggestionHighlightIndex < currentSuggestions.length) {
+      e.preventDefault();
+      const s = currentSuggestions[suggestionHighlightIndex];
+      addFilter(s.type, s.value);
+    } else {
+      // Just apply the text filter
+      hideSuggestions();
+      applyFiltersAndRender();
+    }
+  } else if (e.key === 'Escape') {
+    hideSuggestions();
+    searchInput.blur();
+  }
+});
+
+searchClear.addEventListener('click', () => {
+  searchInput.value = '';
+  searchClear.hidden = true;
+  hideSuggestions();
+  applyFiltersAndRender();
+  searchInput.focus();
+});
+
+// Close suggestions when clicking outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-bar')) {
+    hideSuggestions();
+  }
+});
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -278,7 +530,6 @@ function renderPresets(presets) {
     return;
   }
 
-  presetsCache = presets;
   presets.forEach((preset, index) => {
     presetsEl.appendChild(createPresetCard(preset, index));
   });
@@ -292,7 +543,8 @@ async function loadPresets() {
     }
 
     const presets = await response.json();
-    renderPresets(presets);
+    presetsCache = presets;
+    applyFiltersAndRender();
     const presetCount = Array.isArray(presets) ? presets.length : 0;
     setStatus(`Loaded ${presetCount} preset${presetCount === 1 ? '' : 's'}.`);
   } catch (error) {

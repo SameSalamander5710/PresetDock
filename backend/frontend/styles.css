@@ -79,11 +79,223 @@ h1 {
   margin-top: 28px;
 }
 
+.search-bar {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(8, 17, 28, 0.7);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.search-input-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(114, 214, 201, 0.12);
+}
+
+.search-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.search-input-wrap input[type="search"] {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  outline: none;
+  padding: 4px 0;
+}
+
+.search-input-wrap input[type="search"]::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.search-clear {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: none;
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.search-clear:hover {
+  color: var(--text);
+  background: rgba(148, 163, 184, 0.12);
+  transform: none;
+}
+
+.search-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: none;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: linear-gradient(180deg, rgba(18, 31, 51, 0.99), rgba(10, 17, 30, 0.99));
+  box-shadow: var(--shadow);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.search-suggestions.visible {
+  display: block;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 120ms ease;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.suggestion-item:hover,
+.suggestion-item.highlighted {
+  background: rgba(114, 214, 201, 0.1);
+}
+
+.suggestion-type {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.suggestion-type.tag {
+  background: rgba(114, 214, 201, 0.15);
+  color: var(--accent);
+}
+
+.suggestion-type.engine {
+  background: rgba(255, 177, 103, 0.15);
+  color: #ffbe7a;
+}
+
+.suggestion-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 0;
+  padding-top: 8px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: default;
+  animation: chipIn 200ms ease both;
+}
+
+.filter-chip.tag-chip {
+  background: rgba(114, 214, 201, 0.12);
+  border: 1px solid rgba(114, 214, 201, 0.28);
+  color: var(--accent);
+}
+
+.filter-chip.engine-chip {
+  background: rgba(255, 177, 103, 0.12);
+  border: 1px solid rgba(255, 177, 103, 0.28);
+  color: #ffbe7a;
+}
+
+.filter-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: none;
+  transition: background 120ms ease;
+}
+
+.filter-chip-remove:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: none;
+}
+
+@keyframes chipIn {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 16px;
   gap: 10px;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filter-count {
+  font-size: 0.84rem;
+  color: var(--muted);
+  min-height: 1.2rem;
 }
 
 .secondary-button {
@@ -383,7 +595,6 @@ button:disabled {
     opacity: 0;
     transform: translateY(12px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
