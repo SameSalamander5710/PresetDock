@@ -20,12 +20,12 @@ Example:
 
 ```json
 {
-  "name": "Gemma 2 9B Q4",
-  "engine": "llama-cli",
-  "model": "gemma-2-9b-it-Q4_K_M.gguf",
-  "tags": ["gemma", "9b", "q4"],
+  "name": "Gemma 4 E4B - Q4",
+  "engine": "llama-server",
+  "model": "unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL",
+  "tags": ["gemma", "E4B", "QAT", "Q4"],
   "description": "General purpose, balanced speed/quality",
-  "command": "llama-cli.exe -m models/gemma-2-9b-it-Q4_K_M.gguf -p \"You are a helpful assistant\" -n 512"
+  "command": "llama-server -hf unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL --spec-type draft-mtp --spec-draft-n-max 2 -fit on -ngl 999 --flash-attn on -c 8192 --temp 1.0 --top-p 0.95 --top-k 64 --mlock --host 127.0.0.1 --port 8080"
 }
 ```
 

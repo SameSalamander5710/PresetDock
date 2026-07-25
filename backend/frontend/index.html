@@ -56,7 +56,7 @@
         <div class="field-grid">
           <label class="field">
             <span class="field-label">Name</span>
-            <input id="preset-name" name="name" type="text" placeholder="Gemma 2 9B Q4" />
+            <input id="preset-name" name="name" type="text" placeholder="Gemma 4 E4B - Q4" />
           </label>
           <label class="field">
             <span class="field-label">Engine</span>
@@ -64,11 +64,11 @@
           </label>
           <label class="field">
             <span class="field-label">Model</span>
-            <input id="preset-model" name="model" type="text" placeholder="gemma-2-9b-it-Q4_K_M.gguf" />
+            <input id="preset-model" name="model" type="text" placeholder="gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL" />
           </label>
           <label class="field full-width">
             <span class="field-label">Tags</span>
-            <textarea id="preset-tags" name="tags" rows="3" placeholder="gemma, 9b, q4"></textarea>
+            <textarea id="preset-tags" name="tags" rows="3" placeholder="gemma, E4B, QAT, Q4"></textarea>
           </label>
           <label class="field full-width">
             <span class="field-label">Description</span>
@@ -77,7 +77,7 @@
           <label class="field full-width">
             <span class="field-label">Command</span>
             <div class="command-editor-wrap">
-              <textarea id="preset-command" name="command" rows="7" placeholder="llama-cli.exe -m models/..."></textarea>
+              <textarea id="preset-command" name="command" rows="7" placeholder="llama-cli -m models/..."></textarea>
               <button type="button" id="copy-command-btn" class="copy-button" title="Copy command" aria-label="Copy command to clipboard">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               </button>

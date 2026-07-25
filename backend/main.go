@@ -499,7 +499,7 @@ func ensurePresetsDir(presetsDir string) error {
 		return err
 	}
 
-	examplePath := filepath.Join(presetsDir, "example.json")
+	examplePath := filepath.Join(presetsDir, "Example.json")
 	if _, err := os.Stat(examplePath); err == nil {
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -507,12 +507,12 @@ func ensurePresetsDir(presetsDir string) error {
 	}
 
 	example := Preset{
-		Name:        "Gemma 2 9B Q4",
-		Engine:      "llama-cli",
-		Model:       "gemma-2-9b-it-Q4_K_M.gguf",
-		Tags:        []string{"gemma", "9b", "q4"},
-		Description: "General purpose, balanced speed/quality",
-		Command:     "llama-cli.exe -m models/gemma-2-9b-it-Q4_K_M.gguf -p \"You are a helpful assistant\" -n 512",
+		Name:        "Gemma 4 E4B - Q4",
+		Engine:      "llama-server",
+		Model:       "unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL",
+		Tags:        []string{"gemma", "E4B", "QAT", "Q4"},
+		Description: "Example preset",
+		Command:     "llama-server -hf unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL --spec-type draft-mtp --spec-draft-n-max 2 -fit on -ngl 999 --flash-attn on -c 8192 --temp 1.0 --top-p 0.95 --top-k 64 --mlock --host 127.0.0.1 --port 8080",
 	}
 
 	data, err := json.MarshalIndent(example, "", "  ")

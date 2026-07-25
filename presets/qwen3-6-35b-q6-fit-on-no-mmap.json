@@ -1,8 +1,0 @@
-{
-  "name": "Qwen3.6 35B Q6, Fit on+no-mmap",
-  "engine": "unknown",
-  "model": "Qwen3.6-35B-A3B-MTP-GGUF:UD-Q6_K",
-  "tags": [],
-  "description": "67.03 tokens per second. In the absence of sm, fit on and no-mmap seems to work!",
-  "command": "llama-server -hf unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q6_K --spec-type draft-mtp --spec-draft-n-max 2 --n-cpu-moe 3 -c 131072 --parallel 1 --no-mmap --flash-attn on -ctk q8_0 -ctv q8_0 --temp 0.7 --top-p 0.9 --top-k 40 --min-p 0.0 --presence-penalty 0.0 --reasoning-preserve --jinja --host 127.0.0.1 --port 8080"
-}

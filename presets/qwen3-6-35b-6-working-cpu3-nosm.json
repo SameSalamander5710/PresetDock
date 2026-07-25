@@ -1,8 +1,0 @@
-{
-  "name": "Qwen3.6 35B Q6, working CPU3 noSM",
-  "engine": "llama-server",
-  "model": "Qwen3.6-35B-A3B-MTP-GGUF",
-  "tags": [],
-  "description": "61.90 tokens per second, No split mode\nactually, works as good as the new --fit on, since fit doesnt work when you manually set cpu moe",
-  "command": "llama-server -hf unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q6_K --spec-type draft-mtp --spec-draft-n-max 2  --n-cpu-moe 3 -c 131072 --parallel 1 --fit off --no-mmap --flash-attn on -ctk q8_0 -ctv q8_0 --temp 0.7 --top-p 0.9 --top-k 40 --min-p 0.0 --presence-penalty 0.0 --reasoning-preserve --jinja --host 127.0.0.1 --port 8080 -lv 5"
-}

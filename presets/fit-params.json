@@ -1,8 +1,0 @@
-{
-  "name": "fit params",
-  "engine": "command",
-  "model": "Qwen3.6-35B-A3B-MTP-GGUF:UD-Q6_K",
-  "tags": [],
-  "description": "python \"C:\\Users\\Jiffin Benjamin\\Desktop\\llama.cpp\\mtp-bench.py\"",
-  "command": "llama-fit-params -hf unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q6_K -c 131072"
-}
