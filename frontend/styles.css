@@ -498,6 +498,10 @@ h1 {
   font-size: 0.82rem;
 }
 
+.command-wrap {
+  position: relative;
+}
+
 .command {
   margin: 0;
   padding: 14px;
@@ -510,6 +514,55 @@ h1 {
   line-height: 1.5;
   font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
   font-size: 0.9rem;
+}
+
+.command-wrap .command {
+  padding-right: 42px;
+}
+
+.copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 0;
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--muted);
+  padding: 0;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+  box-shadow: none;
+  z-index: 2;
+}
+
+.copy-button:hover {
+  background: rgba(114, 214, 201, 0.2);
+  color: var(--accent);
+  transform: none;
+}
+
+.copy-button svg {
+  pointer-events: none;
+}
+
+/* Editor command wrap with copy button */
+.command-editor-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.command-editor-wrap textarea {
+  padding-right: 40px;
+}
+
+.command-editor-wrap .copy-button {
+  top: 8px;
+  right: 8px;
 }
 
 .actions {

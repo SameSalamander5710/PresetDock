@@ -200,7 +200,7 @@ func main() {
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
 	}))
-	mux.Handle("/", http.FileServer(http.FS(frontendFS)))
+	mux.Handle("/", noCache(http.FileServer(http.FS(frontendFS))))
 
 	listener, err := net.Listen("tcp", "127.0.0.1:8765")
 	if err != nil {
@@ -493,4 +493,13 @@ func httpError(w http.ResponseWriter, status int, message string) {
 func methodNotAllowed(w http.ResponseWriter, allowed string) {
 	w.Header().Set("Allow", allowed)
 	httpError(w, http.StatusMethodNotAllowed, "method not allowed")
+}
+
+func noCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		next.ServeHTTP(w, r)
+	})
 }

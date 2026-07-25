@@ -16,6 +16,18 @@ const modelInput = document.getElementById('preset-model');
 const tagsInput = document.getElementById('preset-tags');
 const descriptionInput = document.getElementById('preset-description');
 const commandInput = document.getElementById('preset-command');
+const copyCommandBtn = document.getElementById('copy-command-btn');
+
+copyCommandBtn.addEventListener('click', async () => {
+  const text = commandInput.value.trim();
+  if (!text) return;
+  await copyToClipboard(text);
+  const originalHTML = copyCommandBtn.innerHTML;
+  copyCommandBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  setTimeout(() => {
+    copyCommandBtn.innerHTML = originalHTML;
+  }, 1500);
+});
 
 // Search / filter elements
 const searchInput = document.getElementById('search-input');
@@ -317,6 +329,42 @@ function textToTags(text) {
     .filter(Boolean);
 }
 
+function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).catch(() => {});
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+  return Promise.resolve();
+}
+
+function createCopyButton(commandText) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'copy-button';
+  btn.setAttribute('aria-label', 'Copy command to clipboard');
+  btn.setAttribute('title', 'Copy command');
+  btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+  btn.addEventListener('click', async () => {
+    if (!commandText) return;
+    await copyToClipboard(commandText);
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    setTimeout(() => {
+      btn.innerHTML = originalHTML;
+    }, 1500);
+  });
+
+  return btn;
+}
+
 function createTag(text) {
   const tag = document.createElement('span');
   tag.className = 'tag';
@@ -392,6 +440,36 @@ function closeEditor() {
   editorFeedback.textContent = '';
 }
 
+function openDuplicateEditor(preset) {
+  // Clear activePresetId so it creates a NEW preset, not edits the existing one
+  activePresetId = '';
+  selectedEngine = preset.engine || '';
+
+  dialogTitle.textContent = `Duplicate ${preset.name || preset.id}`;
+  dialogSubtitle.textContent = 'Modify the fields and save as a new preset.';
+  editorSaveButton.textContent = 'Create preset';
+
+  // Pre-fill with copied values, appending " (copy)" to the name
+  nameInput.value = (preset.name || '') + ' (copy)';
+  engineInput.value = preset.engine || '';
+  modelInput.value = preset.model || '';
+  tagsInput.value = tagsToText(preset.tags);
+  descriptionInput.value = preset.description || '';
+  commandInput.value = preset.command || '';
+
+  editorFeedback.classList.remove('error');
+  editorFeedback.textContent = '';
+
+  if (typeof dialog.showModal === 'function') {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute('open', '');
+  }
+
+  nameInput.focus();
+  nameInput.select();
+}
+
 function createPresetCard(preset, index) {
   const card = document.createElement('article');
   card.className = 'card';
@@ -425,12 +503,22 @@ function createPresetCard(preset, index) {
   editButton.textContent = 'Edit';
   editButton.className = 'secondary-button';
 
+  const duplicateButton = document.createElement('button');
+  duplicateButton.type = 'button';
+  duplicateButton.className = 'subtle-button';
+  duplicateButton.setAttribute('title', 'Duplicate preset');
+  duplicateButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
   const deleteButton = document.createElement('button');
   deleteButton.type = 'button';
   deleteButton.textContent = 'Delete';
   deleteButton.className = 'danger-button';
 
-  actionButtons.append(runButton, editButton, deleteButton);
+  duplicateButton.addEventListener('click', () => {
+    openDuplicateEditor(preset);
+  });
+
+  actionButtons.append(runButton, editButton, duplicateButton, deleteButton);
   header.append(titleWrap, actionButtons);
 
   const description = document.createElement('p');
@@ -443,9 +531,13 @@ function createPresetCard(preset, index) {
     tags.appendChild(createTag(tagText));
   });
 
+  const commandWrap = document.createElement('div');
+  commandWrap.className = 'command-wrap';
   const command = document.createElement('pre');
   command.className = 'command';
   command.textContent = preset.command || '';
+  const copyBtn = createCopyButton(preset.command || '');
+  commandWrap.append(command, copyBtn);
 
   const feedback = document.createElement('span');
   feedback.className = 'feedback';
@@ -518,7 +610,7 @@ function createPresetCard(preset, index) {
     }
   });
 
-  card.append(header, description, tags, command, feedback);
+  card.append(header, description, tags, commandWrap, feedback);
   return card;
 }
 
