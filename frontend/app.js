@@ -45,6 +45,14 @@ let activeFilters = [];
 let suggestionHighlightIndex = -1;
 let currentSuggestions = [];
 
+// Favourites
+let favouritesSet = new Set();
+
+// Decks
+let decksCache = [];
+let activeDeckFilter = ''; // deck name currently filtering
+let editingDeckName = '';  // original name when editing a deck
+
 // --- Search / Filter Logic ---
 
 function gatherAllTagsEngines(presets) {
@@ -90,6 +98,18 @@ function applyFiltersAndRender() {
   let filtered = presetsMatchFilters(presetsCache);
   const searchText = searchInput.value.trim();
   filtered = presetsMatchText(filtered, searchText);
+
+  // Apply deck filter
+  if (activeDeckFilter) {
+    const deck = decksCache.find((d) => d.name === activeDeckFilter);
+    if (deck) {
+      const deckIds = new Set(deck.preset_ids);
+      filtered = filtered.filter((p) => deckIds.has(p.id));
+    } else {
+      filtered = [];
+    }
+  }
+
   renderPresets(filtered);
 
   // Update clear button visibility
@@ -98,22 +118,56 @@ function applyFiltersAndRender() {
   // Update filter count
   const total = presetsCache.length;
   const shown = filtered.length;
-  if (activeFilters.length > 0 || searchText) {
+  const hasFilters = activeFilters.length > 0 || searchText || activeDeckFilter;
+  if (hasFilters) {
     filterCountEl.textContent = `Showing ${shown} of ${total} preset${total === 1 ? '' : 's'}`;
   } else {
     filterCountEl.textContent = '';
   }
 
   // Update status
-  if (activeFilters.length > 0 || searchText) {
+  if (hasFilters) {
     setStatus(`Showing ${shown} of ${total}.`);
   } else {
     setStatus(`Loaded ${total} preset${total === 1 ? '' : 's'}.`);
   }
+
+  // Update deck filter chip
+  renderDeckFilterChip();
+}
+
+function renderDeckFilterChip() {
+  // Remove existing deck chip if any
+  const existing = filterChipsEl.querySelector('.deck-chip');
+  if (existing) existing.remove();
+
+  if (!activeDeckFilter) return;
+
+  const chip = document.createElement('span');
+  chip.className = 'filter-chip deck-chip';
+  chip.textContent = `🗂 ${activeDeckFilter}`;
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'filter-chip-remove';
+  removeBtn.setAttribute('aria-label', 'Remove deck filter');
+  removeBtn.textContent = '\u00d7';
+  removeBtn.addEventListener('click', () => {
+    activeDeckFilter = '';
+    deckSelector.value = '';
+    applyFiltersAndRender();
+  });
+
+  chip.appendChild(removeBtn);
+  filterChipsEl.appendChild(chip);
 }
 
 function renderFilterChips() {
+  // Preserve deck chip
+  const deckChip = filterChipsEl.querySelector('.deck-chip');
   filterChipsEl.innerHTML = '';
+  if (deckChip) filterChipsEl.appendChild(deckChip);
+
   activeFilters.forEach((f, idx) => {
     const chip = document.createElement('span');
     chip.className = `filter-chip ${f.type}-chip`;
@@ -479,6 +533,32 @@ function createPresetCard(preset, index) {
   header.className = 'card-header';
 
   const titleWrap = document.createElement('div');
+
+  // Favourite star button
+  const starBtn = document.createElement('button');
+  starBtn.type = 'button';
+  starBtn.className = 'favourite-star';
+  starBtn.setAttribute('title', preset.is_favourite ? 'Remove from favourites' : 'Add to favourites');
+  starBtn.setAttribute('aria-label', starBtn.getAttribute('title'));
+  starBtn.textContent = preset.is_favourite ? '★' : '☆';
+  if (preset.is_favourite) starBtn.classList.add('active');
+
+  starBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const isNewFav = !starBtn.classList.contains('active');
+    if (isNewFav) {
+      await fetch('/api/favourites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preset_id: preset.id }),
+      });
+    } else {
+      await fetch(`/api/favourites/${encodeURIComponent(preset.id)}`, { method: 'DELETE' });
+    }
+    // Reload presets to get updated ordering
+    await loadPresets();
+  });
+
   const title = document.createElement('h2');
   title.textContent = preset.name || preset.id;
   const metaRow = document.createElement('div');
@@ -489,7 +569,7 @@ function createPresetCard(preset, index) {
   model.textContent = preset.model || 'No model specified';
 
   metaRow.append(model, createEngineBadge(preset.engine));
-  titleWrap.append(title, metaRow);
+  titleWrap.append(starBtn, title, metaRow);
 
   const actionButtons = document.createElement('div');
   actionButtons.className = 'action-buttons';
@@ -636,6 +716,13 @@ async function loadPresets() {
 
     const presets = await response.json();
     presetsCache = presets;
+
+    // Build favourites set from presets data
+    favouritesSet = new Set();
+    presets.forEach((p) => {
+      if (p.is_favourite) favouritesSet.add(p.id);
+    });
+
     applyFiltersAndRender();
     const presetCount = Array.isArray(presets) ? presets.length : 0;
     setStatus(`Loaded ${presetCount} preset${presetCount === 1 ? '' : 's'}.`);
@@ -643,6 +730,30 @@ async function loadPresets() {
     renderEmpty('Unable to load presets. Check the backend or refresh after adding valid JSON files.');
     setStatus(error instanceof Error ? error.message : 'Failed to load presets.', true);
   }
+}
+
+async function loadDecks() {
+  try {
+    const response = await fetch('/api/decks');
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+    decksCache = await response.json();
+    populateDeckSelector();
+  } catch (error) {
+    console.error('Failed to load decks:', error);
+  }
+}
+
+function populateDeckSelector() {
+  deckSelector.innerHTML = '<option value="">All presets</option>';
+  decksCache.forEach((deck) => {
+    const opt = document.createElement('option');
+    opt.value = deck.name;
+    opt.textContent = deck.name;
+    if (deck.name === activeDeckFilter) opt.selected = true;
+    deckSelector.appendChild(opt);
+  });
 }
 
 createButton.addEventListener('click', () => {
@@ -731,5 +842,268 @@ editorForm.addEventListener('submit', async (event) => {
   }
 });
 
+// Deck selector element
+const deckSelector = document.getElementById('deck-selector');
+const decksButton = document.getElementById('decks-button');
+
+deckSelector.addEventListener('change', () => {
+  activeDeckFilter = deckSelector.value || '';
+  applyFiltersAndRender();
+});
+
+// --- Decks Dialog ---
+const decksDialog = document.getElementById('decks-dialog');
+const decksCloseButton = document.getElementById('decks-close');
+const deckNewButton = document.getElementById('deck-new-button');
+const decksListEl = document.getElementById('decks-list');
+const deckEditorEmpty = document.getElementById('deck-editor-empty');
+const deckEditorForm = document.getElementById('deck-editor-form');
+const deckNameInput = document.getElementById('deck-name-input');
+const deckPresetsSearch = document.getElementById('deck-presets-search');
+const deckPresetsList = document.getElementById('deck-presets-list');
+const deckSaveButton = document.getElementById('deck-save-button');
+const deckDeleteButton = document.getElementById('deck-delete-button');
+const deckFeedback = document.getElementById('deck-feedback');
+
+decksButton.addEventListener('click', () => {
+  openDecksDialog();
+});
+
+decksCloseButton.addEventListener('click', closeDecksDialog);
+
+function openDecksDialog() {
+  renderDecksList();
+  deckEditorEmpty.hidden = false;
+  deckEditorForm.hidden = true;
+  editingDeckName = '';
+
+  if (typeof decksDialog.showModal === 'function') {
+    decksDialog.showModal();
+  } else {
+    decksDialog.setAttribute('open', '');
+  }
+}
+
+function closeDecksDialog() {
+  if (decksDialog.open) {
+    decksDialog.close();
+  }
+}
+
+function renderDecksList() {
+  decksListEl.innerHTML = '';
+  if (decksCache.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No decks yet. Create one to get started.';
+    decksListEl.appendChild(empty);
+    return;
+  }
+
+  decksCache.forEach((deck) => {
+    const item = document.createElement('div');
+    item.className = 'deck-list-item';
+    if (deck.name === editingDeckName) item.classList.add('selected');
+
+    const label = document.createElement('span');
+    label.className = 'deck-list-label';
+    label.textContent = deck.name;
+
+    const count = document.createElement('span');
+    count.className = 'deck-list-count';
+    count.textContent = `${deck.preset_ids.length} preset${deck.preset_ids.length === 1 ? '' : 's'}`;
+
+    item.append(label, count);
+    item.addEventListener('click', () => selectDeckForEditing(deck.name));
+    decksListEl.appendChild(item);
+  });
+}
+
+function selectDeckForEditing(deckName) {
+  editingDeckName = deckName;
+  const deck = decksCache.find((d) => d.name === deckName);
+  if (!deck) return;
+
+  deckNameInput.value = deck.name;
+  deckEditorEmpty.hidden = true;
+  deckEditorForm.hidden = false;
+  deckFeedback.textContent = '';
+  deckFeedback.classList.remove('error');
+
+  renderDeckPresetsList(deck.preset_ids);
+  renderDecksList(); // update selection highlight
+}
+
+function renderDeckPresetsList(selectedIds) {
+  const searchQuery = deckPresetsSearch.value.toLowerCase().trim();
+  deckPresetsList.innerHTML = '';
+
+  let available = presetsCache.slice();
+  if (searchQuery) {
+    available = available.filter((p) =>
+      (p.name || '').toLowerCase().includes(searchQuery) || (p.id || '').toLowerCase().includes(searchQuery)
+    );
+  }
+
+  if (available.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No presets found.';
+    deckPresetsList.appendChild(empty);
+    return;
+  }
+
+  available.forEach((preset) => {
+    const item = document.createElement('label');
+    item.className = 'deck-preset-item';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = selectedIds.includes(preset.id);
+
+    const label = document.createElement('span');
+    label.textContent = preset.name || preset.id;
+
+    item.append(cb, label);
+    deckPresetsList.appendChild(item);
+  });
+}
+
+deckPresetsSearch.addEventListener('input', () => {
+  if (editingDeckName) {
+    const deck = decksCache.find((d) => d.name === editingDeckName);
+    if (deck) renderDeckPresetsList(deck.preset_ids);
+  }
+});
+
+deckNewButton.addEventListener('click', () => {
+  editingDeckName = '';
+  deckNameInput.value = '';
+  deckEditorEmpty.hidden = true;
+  deckEditorForm.hidden = false;
+  deckFeedback.textContent = '';
+  deckFeedback.classList.remove('error');
+  deckPresetsSearch.value = '';
+  deckPresetsList.innerHTML = '';
+
+  // Show all presets unselected
+  presetsCache.forEach((preset) => {
+    const item = document.createElement('label');
+    item.className = 'deck-preset-item';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = false;
+
+    const label = document.createElement('span');
+    label.textContent = preset.name || preset.id;
+
+    item.append(cb, label);
+    deckPresetsList.appendChild(item);
+  });
+
+  renderDecksList();
+});
+
+deckSaveButton.addEventListener('click', async () => {
+  const name = deckNameInput.value.trim();
+  if (!name) {
+    deckFeedback.classList.add('error');
+    deckFeedback.textContent = 'Deck name is required.';
+    return;
+  }
+
+  // Gather selected preset IDs
+  const checkboxes = deckPresetsList.querySelectorAll('.deck-preset-item input[type="checkbox"]');
+  const presetIds = [];
+  checkboxes.forEach((cb) => {
+    if (cb.checked) {
+      // Find the preset id from the label text
+      const labelText = cb.parentElement.querySelector('span').textContent;
+      const preset = presetsCache.find((p) => (p.name || p.id) === labelText);
+      if (preset) presetIds.push(preset.id);
+    }
+  });
+
+  deckSaveButton.disabled = true;
+  deckFeedback.classList.remove('error');
+  deckFeedback.textContent = 'Saving...';
+
+  try {
+    if (editingDeckName) {
+      // Update existing deck
+      const response = await fetch(`/api/decks/${encodeURIComponent(editingDeckName)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, preset_ids: presetIds }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update deck');
+      }
+    } else {
+      // Create new deck
+      const response = await fetch('/api/decks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, preset_ids: presetIds }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create deck');
+      }
+      editingDeckName = name;
+    }
+
+    deckFeedback.textContent = 'Deck saved.';
+    await loadDecks();
+    renderDecksList();
+    selectDeckForEditing(name);
+  } catch (error) {
+    deckFeedback.classList.add('error');
+    deckFeedback.textContent = error.message || 'Save failed.';
+  } finally {
+    deckSaveButton.disabled = false;
+  }
+});
+
+deckDeleteButton.addEventListener('click', async () => {
+  if (!editingDeckName) return;
+  if (!window.confirm(`Delete deck "${editingDeckName}"?`)) return;
+
+  deckDeleteButton.disabled = true;
+  deckFeedback.classList.remove('error');
+  deckFeedback.textContent = 'Deleting...';
+
+  try {
+    const response = await fetch(`/api/decks/${encodeURIComponent(editingDeckName)}`, { method: 'DELETE' });
+    if (!response.ok && response.status !== 204) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete deck');
+    }
+
+    deckFeedback.textContent = 'Deck deleted.';
+
+    // If the deleted deck was the active filter, clear it
+    if (activeDeckFilter === editingDeckName) {
+      activeDeckFilter = '';
+      deckSelector.value = '';
+      applyFiltersAndRender();
+    }
+
+    await loadDecks();
+    deckEditorEmpty.hidden = true;
+    deckEditorForm.hidden = true;
+    editingDeckName = '';
+    renderDecksList();
+  } catch (error) {
+    deckFeedback.classList.add('error');
+    deckFeedback.textContent = error.message || 'Delete failed.';
+  } finally {
+    deckDeleteButton.disabled = false;
+  }
+});
+
 startHeartbeat();
 loadPresets();
+loadDecks();

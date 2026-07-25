@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Qwen3.6 27B Q6",
+    "preset_ids": [
+      "qwen3-6-27b-6-opti",
+      "qwen3-6-27b-q6-k",
+      "Qwen36_27B"
+    ]
+  }
+]

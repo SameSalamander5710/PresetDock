@@ -1,0 +1,8 @@
+{
+  "name": "Qwen3.6 35B Q6, negative test",
+  "engine": "unknown",
+  "model": "Qwen3.6-35B-A3B-MTP-GGUF:UD-Q6_K",
+  "tags": [],
+  "description": "llama-mmap.cpp:744: GGML_ASSERT(addr) failed\n\neither need sm, or remove no-mmap. fit on off doesnt change it",
+  "command": "llama-server -hf unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q6_K --spec-type draft-mtp --spec-draft-n-max 2 --n-cpu-moe 1 --fit on --no-mmap  --mlock -c 131072 --parallel 1 --flash-attn on -ctk q8_0 -ctv q8_0 --temp 0.7 --top-p 0.9 --top-k 40 --min-p 0.0 --presence-penalty 0.0 --reasoning-preserve --jinja --host 127.0.0.1 --port 8080"
+}

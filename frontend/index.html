@@ -31,7 +31,11 @@
         <div class="toolbar">
           <span id="filter-count" class="filter-count"></span>
           <div class="toolbar-actions">
+            <select id="deck-selector" class="deck-selector" title="Filter by deck">
+              <option value="">All presets</option>
+            </select>
             <button id="create-button" type="button" class="secondary-button">Create</button>
+            <button id="decks-button" type="button" class="secondary-button" title="Manage decks">🗂 Decks</button>
             <button id="shutdown-button" type="button" class="subtle-button" title="Stop the PresetDock server">Shut down</button>
           </div>
         </div>
@@ -89,6 +93,57 @@
           </div>
         </div>
       </form>
+    </dialog>
+
+    <!-- Decks Management Dialog -->
+    <dialog id="decks-dialog" class="decks-dialog">
+      <div class="decks-shell">
+        <div class="dialog-header">
+          <div>
+            <h2>Manage Decks</h2>
+            <p>Create, edit, and organize decks to group your presets.</p>
+          </div>
+          <button id="decks-close" type="button" class="secondary-button">Close</button>
+        </div>
+
+        <div class="decks-layout">
+          <div class="decks-list-panel">
+            <div class="decks-list-header">
+              <h3>Decks</h3>
+              <button id="deck-new-button" type="button" class="secondary-button">New Deck</button>
+            </div>
+            <div id="decks-list" class="decks-list"></div>
+          </div>
+
+          <div class="deck-editor-panel" id="deck-editor-panel">
+            <div id="deck-editor-empty" class="deck-editor-empty">
+              <p>Select or create a deck to edit.</p>
+            </div>
+            <div id="deck-editor-form" class="deck-editor-form" hidden>
+              <label class="field">
+                <span class="field-label">Deck Name</span>
+                <input id="deck-name-input" type="text" placeholder="My Deck" />
+              </label>
+
+              <div class="deck-presets-selector">
+                <label class="field">
+                  <span class="field-label">Presets in this deck</span>
+                  <div class="deck-presets-search-wrap">
+                    <input id="deck-presets-search" type="search" placeholder="Search presets..." />
+                  </div>
+                  <div id="deck-presets-list" class="deck-presets-list"></div>
+                </label>
+              </div>
+
+              <div class="deck-editor-actions">
+                <button id="deck-save-button" type="button">Save Deck</button>
+                <button id="deck-delete-button" type="button" class="danger-button">Delete Deck</button>
+              </div>
+              <span id="deck-feedback" class="feedback"></span>
+            </div>
+          </div>
+        </div>
+      </div>
     </dialog>
   </body>
 </html>
