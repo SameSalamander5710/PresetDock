@@ -680,6 +680,13 @@ button:disabled {
   }
 }
 
+/* --- Card Title Row (star + name inline) --- */
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* --- Favourite Star --- */
 .favourite-star {
   display: inline-flex;

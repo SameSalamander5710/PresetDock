@@ -559,17 +559,23 @@ function createPresetCard(preset, index) {
     await loadPresets();
   });
 
-  const title = document.createElement('h2');
-  title.textContent = preset.name || preset.id;
-  const metaRow = document.createElement('div');
-  metaRow.className = 'meta-row';
+   const title = document.createElement('h2');
+   title.textContent = preset.name || preset.id;
 
-  const model = document.createElement('p');
-  model.className = 'model';
-  model.textContent = preset.model || 'No model specified';
+   // Wrap star and title in the same inline row
+   const titleRow = document.createElement('div');
+   titleRow.className = 'card-title-row';
+   titleRow.append(starBtn, title);
 
-  metaRow.append(model, createEngineBadge(preset.engine));
-  titleWrap.append(starBtn, title, metaRow);
+   const metaRow = document.createElement('div');
+   metaRow.className = 'meta-row';
+
+   const model = document.createElement('p');
+   model.className = 'model';
+   model.textContent = preset.model || 'No model specified';
+
+   metaRow.append(model, createEngineBadge(preset.engine));
+   titleWrap.append(titleRow, metaRow);
 
   const actionButtons = document.createElement('div');
   actionButtons.className = 'action-buttons';
