@@ -368,6 +368,39 @@ func main() {
 		}
 	}))
 
+	// /api/run (POST) — run a preset directly from a JSON payload (used by the editor "Run" button)
+	mux.Handle("/api/run", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+
+		var payload struct {
+			Name    string `json:"name"`
+			Command string `json:"command"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			httpError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		if strings.TrimSpace(payload.Command) == "" {
+			httpError(w, http.StatusBadRequest, "command is required")
+			return
+		}
+
+		command, err := launchPresetCommand(payload.Name, payload.Command)
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, fmt.Sprintf("failed to launch command: %v", err))
+			return
+		}
+		if err := command.Start(); err != nil {
+			httpError(w, http.StatusInternalServerError, fmt.Sprintf("failed to launch command: %v", err))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
+	}))
+	// /api/run/{id} (POST) — run a saved preset by ID
 	mux.Handle("/api/run/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)

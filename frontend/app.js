@@ -10,6 +10,7 @@ const editorFeedback = document.getElementById('preset-editor-feedback');
 const editorCloseButton = document.getElementById('editor-close');
 const editorCancelButton = document.getElementById('editor-cancel');
 const editorSaveButton = document.getElementById('editor-save');
+const editorRunButton = document.getElementById('editor-run');
 const nameInput = document.getElementById('preset-name');
 const engineInput = document.getElementById('preset-engine');
 const modelInput = document.getElementById('preset-model');
@@ -790,6 +791,46 @@ shutdownButton.addEventListener('click', async () => {
 
 editorCloseButton.addEventListener('click', closeEditor);
 editorCancelButton.addEventListener('click', closeEditor);
+
+editorRunButton.addEventListener('click', async () => {
+  const payload = readEditorValues();
+
+  if (!payload.command || !payload.command.trim()) {
+    editorFeedback.classList.add('error');
+    editorFeedback.textContent = 'Command is required to run a preset.';
+    return;
+  }
+
+  editorRunButton.disabled = true;
+  editorSaveButton.disabled = true;
+  editorFeedback.classList.remove('error');
+  editorFeedback.textContent = 'Running...';
+
+  try {
+    const response = await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || `Request failed with status ${response.status}`);
+    }
+
+    editorFeedback.classList.remove('error');
+    editorFeedback.textContent = 'Preset launched!';
+
+    // Refresh state
+    await Promise.all([loadPresets(), loadDecks()]);
+  } catch (error) {
+    editorFeedback.classList.add('error');
+    editorFeedback.textContent = error instanceof Error ? error.message : 'Failed to run preset.';
+  } finally {
+    editorRunButton.disabled = false;
+    editorSaveButton.disabled = false;
+  }
+});
 
 dialog.addEventListener('cancel', () => {
   editorFeedback.classList.remove('error');
