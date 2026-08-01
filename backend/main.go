@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -23,6 +24,7 @@ const (
 	heartbeatInterval = 30 * time.Second
 	heartbeatTimeout  = 2 * time.Minute
 	shutdownTimeout   = 5 * time.Second
+	createNewConsole  = 0x00000010
 )
 
 //go:embed frontend/*
@@ -388,7 +390,11 @@ func main() {
 			return
 		}
 
-		command := exec.Command("cmd", "/c", "start", "", "cmd", "/k", preset.Command)
+		command, err := launchPresetCommand(preset.Command)
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, fmt.Sprintf("failed to launch command: %v", err))
+			return
+		}
 		if err := command.Start(); err != nil {
 			httpError(w, http.StatusInternalServerError, fmt.Sprintf("failed to launch command: %v", err))
 			return
@@ -684,6 +690,94 @@ func readPreset(path string) (Preset, error) {
 	}
 
 	return preset, nil
+}
+
+func launchPresetCommand(commandLine string) (*exec.Cmd, error) {
+	parts, err := splitCommandLine(commandLine)
+	if err != nil {
+		return nil, err
+	}
+	if len(parts) == 0 {
+		return nil, errors.New("preset command is empty")
+	}
+
+	command := exec.Command(parts[0], parts[1:]...)
+	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNewConsole}
+	return command, nil
+}
+
+func splitCommandLine(commandLine string) ([]string, error) {
+	var parts []string
+	var current strings.Builder
+	inQuotes := false
+	backslashes := 0
+	endedByWhitespace := false
+
+	appendCurrent := func() {
+		if current.Len() > 0 {
+			parts = append(parts, current.String())
+			current.Reset()
+		}
+	}
+
+	for _, r := range commandLine {
+		switch r {
+		case '\\':
+			backslashes++
+			endedByWhitespace = false
+		case '"':
+			if backslashes > 0 {
+				current.WriteString(strings.Repeat("\\", backslashes/2))
+				if backslashes%2 == 1 {
+					current.WriteRune('"')
+				} else {
+					inQuotes = !inQuotes
+				}
+				backslashes = 0
+				endedByWhitespace = false
+				break
+			}
+			inQuotes = !inQuotes
+			endedByWhitespace = false
+		case ' ', '\t', '\r', '\n':
+			if inQuotes {
+				if backslashes > 0 {
+					current.WriteString(strings.Repeat("\\", backslashes))
+					backslashes = 0
+				}
+				current.WriteRune(r)
+				endedByWhitespace = false
+				break
+			}
+			if backslashes > 0 {
+				current.WriteString(strings.Repeat("\\", backslashes))
+				backslashes = 0
+			}
+			appendCurrent()
+			endedByWhitespace = true
+		default:
+			if backslashes > 0 {
+				current.WriteString(strings.Repeat("\\", backslashes))
+				backslashes = 0
+			}
+			current.WriteRune(r)
+			endedByWhitespace = false
+		}
+	}
+
+	if backslashes > 0 {
+		current.WriteString(strings.Repeat("\\", backslashes))
+	}
+	appendCurrent()
+
+	if inQuotes {
+		return nil, errors.New("unterminated quote in preset command")
+	}
+	if len(parts) == 0 && strings.TrimSpace(commandLine) != "" && endedByWhitespace {
+		return nil, errors.New("preset command is invalid")
+	}
+
+	return parts, nil
 }
 
 // --- Favourites ---
