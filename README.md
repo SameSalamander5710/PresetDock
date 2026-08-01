@@ -23,5 +23,6 @@ Preset files live in `presets/` next to the executable, and the filename is the 
 
 - Dev loop: `go run ./backend`
 - Release build: `go build -ldflags "-H=windowsgui" -o PresetDock.exe ./backend`
+- Running a preset opens a `cmd.exe` window and streams the command output there.
 
 For build and implementation notes, see [docs/build-notes.md](docs/build-notes.md).
