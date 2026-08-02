@@ -834,6 +834,9 @@ func loadDecks(presetsDir string) ([]Deck, error) {
 	if err := json.Unmarshal(data, &decks); err != nil {
 		return nil, err
 	}
+	sort.Slice(decks, func(i, j int) bool {
+		return strings.ToLower(decks[i].Name) < strings.ToLower(decks[j].Name)
+	})
 	return decks, nil
 }
 
