@@ -27,12 +27,9 @@ function startHeartbeat() {
   heartbeatInterval = setInterval(async () => {
     try {
       const res = await fetch(`${apiBase}/api/heartbeat`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        const statusEl = document.getElementById('status');
-        if (statusEl) {
-          statusEl.textContent = data.message || '';
-        }
+      // Backend returns 204 No Content — treat any 2xx as success, do NOT parse JSON
+      if (res.ok && res.status !== 204) {
+        // If a body is ever returned in the future, handle it here
       }
     } catch {
       // ignore heartbeat failures
@@ -109,10 +106,21 @@ function createPresetCard(preset, isFavourite) {
   star.addEventListener('click', async (e) => {
     e.stopPropagation();
     try {
-      const resp = await fetch(`${apiBase}/api/favourites/${encodeURIComponent(preset.id)}`, {
-        method: isFavourite ? 'DELETE' : 'POST',
-      });
-      if (!resp.ok && resp.status !== 204) {
+      let resp;
+      if (isFavourite) {
+        // Remove favourite: DELETE /api/favourites/{id}
+        resp = await fetch(`${apiBase}/api/favourites/${encodeURIComponent(preset.id)}`, {
+          method: 'DELETE',
+        });
+      } else {
+        // Add favourite: POST /api/favourites with { preset_id }
+        resp = await fetch(`${apiBase}/api/favourites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ preset_id: preset.id }),
+        });
+      }
+      if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.error || 'Favourite toggle failed');
       }
@@ -144,13 +152,24 @@ function createPresetCard(preset, isFavourite) {
   const actions = document.createElement('div');
   actions.className = 'action-buttons';
 
-  // Run button
+  // Run button — POST /api/run/{id}
   const runBtn = document.createElement('button');
   runBtn.type = 'button';
   runBtn.textContent = 'Run';
   runBtn.title = 'Execute command in terminal';
-  runBtn.addEventListener('click', () => {
-    window.open(`${apiBase}/api/run/${encodeURIComponent(preset.id)}`, '_blank');
+  runBtn.addEventListener('click', async () => {
+    try {
+      const resp = await fetch(`${apiBase}/api/run/${encodeURIComponent(preset.id)}`, {
+        method: 'POST',
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || 'Run failed');
+      }
+      setStatus(`Preset "${preset.name || preset.id}" launched.`);
+    } catch (error) {
+      setStatus(error.message, true);
+    }
   });
 
   // Edit button
@@ -162,7 +181,7 @@ function createPresetCard(preset, isFavourite) {
     openEditorForPreset(preset);
   });
 
-  // Duplicate button
+  // Duplicate button — POST /api/presets with source_preset_id
   const dupBtn = document.createElement('button');
   dupBtn.type = 'button';
   dupBtn.textContent = 'Duplicate';
@@ -170,8 +189,18 @@ function createPresetCard(preset, isFavourite) {
   dupBtn.addEventListener('click', async () => {
     try {
       setStatus('Duplicating preset...');
-      const resp = await fetch(`${apiBase}/api/duplicate/${encodeURIComponent(preset.id)}`, {
+      const resp = await fetch(`${apiBase}/api/presets`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: preset.name ? `${preset.name} (copy)` : `${preset.id} (copy)`,
+          engine: preset.engine || '',
+          model: preset.model || '',
+          tags: preset.tags ? preset.tags.slice() : [],
+          description: preset.description || '',
+          command: preset.command || '',
+          source_preset_id: preset.id,
+        }),
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
@@ -180,13 +209,14 @@ function createPresetCard(preset, isFavourite) {
       const newPreset = await resp.json();
       setStatus(`Preset duplicated as "${newPreset.name || newPreset.id}".`);
       await loadPresets();
+      await loadFavourites();
       renderAllPanes();
     } catch (error) {
       setStatus(error.message, true);
     }
   });
 
-  // Delete button
+  // Delete button — DELETE /api/presets/{id}
   const delBtn = document.createElement('button');
   delBtn.type = 'button';
   delBtn.textContent = 'Delete';
@@ -195,7 +225,7 @@ function createPresetCard(preset, isFavourite) {
     if (!window.confirm(`Delete preset "${preset.name || preset.id}"?`)) return;
     try {
       setStatus('Deleting preset...');
-      const resp = await fetch(`${apiBase}/api/preset/${encodeURIComponent(preset.id)}`, {
+      const resp = await fetch(`${apiBase}/api/presets/${encodeURIComponent(preset.id)}`, {
         method: 'DELETE',
       });
       if (!resp.ok && resp.status !== 204) {
@@ -204,6 +234,7 @@ function createPresetCard(preset, isFavourite) {
       }
       setStatus('Preset deleted.');
       await loadPresets();
+      await loadFavourites();
       renderAllPanes();
     } catch (error) {
       setStatus(error.message, true);
@@ -772,13 +803,15 @@ presetEditor.addEventListener('submit', async (e) => {
   try {
     let resp;
     if (editingPresetId) {
-      resp = await fetch(`${apiBase}/api/preset/${encodeURIComponent(editingPresetId)}`, {
+      // PUT /api/presets/{id}
+      resp = await fetch(`${apiBase}/api/presets/${encodeURIComponent(editingPresetId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
     } else {
-      resp = await fetch(`${apiBase}/api/preset`, {
+      // POST /api/presets
+      resp = await fetch(`${apiBase}/api/presets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -816,10 +849,11 @@ editorRun.addEventListener('click', async () => {
   presetEditorFeedback.textContent = 'Launching...';
 
   try {
-    const resp = await fetch(`${apiBase}/api/run-command`, {
+    // POST /api/run with { name, command }
+    const resp = await fetch(`${apiBase}/api/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
+      body: JSON.stringify({ name: presetName.value.trim() || 'PresetDock', command }),
     });
 
     if (!resp.ok) {
@@ -998,6 +1032,7 @@ deckSaveButton.addEventListener('click', async () => {
   // Gather selected preset IDs
   const checkboxes = deckPresetsList.querySelectorAll('.deck-preset-item input[type="checkbox"]');
   const presetIds = [];
+
   checkboxes.forEach((cb) => {
     if (cb.checked) {
       // Find the preset id from the label text
@@ -1092,30 +1127,43 @@ deckDeleteButton.addEventListener('click', async () => {
 });
 
 // --------------------------------------------------------------------------
+// DOM validation helper — fail fast if required elements are missing
+// --------------------------------------------------------------------------
+function assertElement(id, context = '') {
+  const el = document.getElementById(id);
+  if (!el) {
+    throw new Error(`Missing required element #${id}${context ? ' (' + context + ')' : ''}`);
+  }
+  return el;
+}
+
+// --------------------------------------------------------------------------
 // Global button handlers
 // --------------------------------------------------------------------------
-document.getElementById('create-button').addEventListener('click', openCreateEditor);
-document.getElementById('decks-button').addEventListener('click', showDecksDialog);
-document.getElementById('decks-close').addEventListener('click', closeDecksDialog);
+function wireGlobalActions() {
+  assertElement('create-button', 'global actions').addEventListener('click', openCreateEditor);
+  assertElement('decks-button', 'global actions').addEventListener('click', showDecksDialog);
+  assertElement('decks-close', 'global actions').addEventListener('click', closeDecksDialog);
 
-document.getElementById('shutdown-button').addEventListener('click', async () => {
-  if (!window.confirm('Shut down the PresetDock server?')) return;
-  try {
-    const resp = await fetch(`${apiBase}/api/shutdown`, { method: 'POST' });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error || 'Shutdown failed');
+  assertElement('shutdown-button', 'global actions').addEventListener('click', async () => {
+    if (!window.confirm('Shut down the PresetDock server?')) return;
+    try {
+      const resp = await fetch(`${apiBase}/api/shutdown`, { method: 'POST' });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || 'Shutdown failed');
+      }
+      setStatus('Server shutting down...');
+    } catch (error) {
+      setStatus(error.message, true);
     }
-    setStatus('Server shutting down...');
-  } catch (error) {
-    setStatus(error.message, true);
-  }
-});
+  });
 
-// View toggle button
-document.getElementById('view-toggle').addEventListener('click', () => {
-  setViewMode(viewMode === 'single' ? 'dual' : 'single');
-});
+  // View toggle button
+  assertElement('view-toggle', 'global actions').addEventListener('click', () => {
+    setViewMode(viewMode === 'single' ? 'dual' : 'single');
+  });
+}
 
 // --------------------------------------------------------------------------
 // Close suggestions when clicking outside
@@ -1130,9 +1178,28 @@ document.addEventListener('click', (e) => {
 });
 
 // --------------------------------------------------------------------------
-// Initialization
+// Initialization with explicit bootstrap lifecycle
 // --------------------------------------------------------------------------
 async function init() {
+  // Validate required DOM nodes before wiring anything
+  const requiredIds = [
+    'pane-left',
+    'pane-right',
+    'split-container',
+    'status',
+    'create-button',
+    'decks-button',
+    'decks-close',
+    'shutdown-button',
+    'view-toggle',
+    'preset-dialog',
+    'preset-editor',
+    'decks-dialog',
+  ];
+  for (const id of requiredIds) {
+    assertElement(id, 'bootstrap');
+  }
+
   // Create pane states
   leftPane = createPaneState(document.getElementById('pane-left'));
   rightPane = createPaneState(document.getElementById('pane-right'));
@@ -1140,6 +1207,9 @@ async function init() {
   // Wire events for both panes
   wirePaneEvents(leftPane);
   wirePaneEvents(rightPane);
+
+  // Wire global actions
+  wireGlobalActions();
 
   // Load data
   await loadPresets();
@@ -1157,6 +1227,18 @@ async function init() {
 
   // Load server info if element exists
   loadServerInfo();
+
+  // Mark bootstrap as successful
+  setStatus('Ready');
 }
 
-init();
+// Wrap bootstrap in try/catch to catch startup failures
+(async function bootstrap() {
+  try {
+    setStatus('Loading presets...');
+    await init();
+  } catch (error) {
+    setStatus(`Failed to start: ${error.message}`, true);
+    console.error('Bootstrap failed:', error);
+  }
+})();
