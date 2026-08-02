@@ -1,998 +1,916 @@
-const presetsEl = document.getElementById('presets');
-const statusEl = document.getElementById('status');
-const createButton = document.getElementById('create-button');
-const shutdownButton = document.getElementById('shutdown-button');
-const dialog = document.getElementById('preset-dialog');
-const editorForm = document.getElementById('preset-editor');
-const dialogTitle = document.getElementById('preset-dialog-title');
-const dialogSubtitle = document.getElementById('preset-dialog-subtitle');
-const editorFeedback = document.getElementById('preset-editor-feedback');
-const editorCloseButton = document.getElementById('editor-close');
-const editorCancelButton = document.getElementById('editor-cancel');
-const editorSaveButton = document.getElementById('editor-save');
-const editorRunButton = document.getElementById('editor-run');
-const nameInput = document.getElementById('preset-name');
-const engineInput = document.getElementById('preset-engine');
-const modelInput = document.getElementById('preset-model');
-const tagsInput = document.getElementById('preset-tags');
-const descriptionInput = document.getElementById('preset-description');
-const commandInput = document.getElementById('preset-command');
-const copyCommandBtn = document.getElementById('copy-command-btn');
+// --------------------------------------------------------------------------
+// Minimal telemetry / server-info helpers (unchanged)
+// --------------------------------------------------------------------------
+const apiBase = '';
 
-copyCommandBtn.addEventListener('click', async () => {
-  const text = commandInput.value.trim();
-  if (!text) return;
-  await copyToClipboard(text);
-  const originalHTML = copyCommandBtn.innerHTML;
-  copyCommandBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-  setTimeout(() => {
-    copyCommandBtn.innerHTML = originalHTML;
-  }, 1500);
-});
-
-// Search / filter elements
-const searchInput = document.getElementById('search-input');
-const searchClear = document.getElementById('search-clear');
-const searchSuggestions = document.getElementById('search-suggestions');
-const filterChipsEl = document.getElementById('filter-chips');
-const filterCountEl = document.getElementById('filter-count');
-
-let activePresetId = '';
-let presetsCache = [];
-let selectedEngine = '';
-
-// Active filters: array of { type: 'tag' | 'engine', value: string }
-let activeFilters = [];
-let suggestionHighlightIndex = -1;
-let currentSuggestions = [];
-
-// Favourites
-let favouritesSet = new Set();
-
-// Decks
-let decksCache = [];
-let activeDeckFilter = ''; // deck name currently filtering
-let editingDeckName = '';  // original name when editing a deck
-
-// --- Search / Filter Logic ---
-
-function gatherAllTagsEngines(presets) {
-  const tags = new Set();
-  const engines = new Set();
-  (presets || []).forEach((p) => {
-    (p.tags || []).forEach((t) => tags.add(t.toLowerCase()));
-    if (p.engine) engines.add(p.engine.toLowerCase());
-  });
-  return { tags: [...tags].sort(), engines: [...engines].sort() };
-}
-
-function presetsMatchFilters(presets) {
-  if (activeFilters.length === 0) return presets;
-  return presets.filter((preset) => {
-    const pTags = (preset.tags || []).map((t) => t.toLowerCase());
-    const pEngine = (preset.engine || '').toLowerCase();
-    return activeFilters.every((f) => {
-      if (f.type === 'tag') return pTags.includes(f.value.toLowerCase());
-      if (f.type === 'engine') return pEngine === f.value.toLowerCase();
-      return false;
-    });
-  });
-}
-
-function presetsMatchText(presets, text) {
-  if (!text) return presets;
-  const q = text.toLowerCase().trim();
-  if (!q) return presets;
-  return presets.filter((p) => {
-    const name = (p.name || '').toLowerCase();
-    const engine = (p.engine || '').toLowerCase();
-    const tags = (p.tags || []).map((t) => t.toLowerCase());
-    const model = (p.model || '').toLowerCase();
-    const desc = (p.description || '').toLowerCase();
-    if (name.includes(q) || engine.includes(q) || model.includes(q) || desc.includes(q)) return true;
-    if (tags.some((t) => t.includes(q))) return true;
-    return false;
-  });
-}
-
-function applyFiltersAndRender() {
-  let filtered = presetsMatchFilters(presetsCache);
-  const searchText = searchInput.value.trim();
-  filtered = presetsMatchText(filtered, searchText);
-
-  // Apply deck filter
-  if (activeDeckFilter) {
-    const deck = decksCache.find((d) => d.name === activeDeckFilter);
-    if (deck) {
-      const deckIds = new Set(deck.preset_ids);
-      filtered = filtered.filter((p) => deckIds.has(p.id));
-    } else {
-      filtered = [];
+async function loadServerInfo() {
+  try {
+    const res = await fetch(`${apiBase}/api/info`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const el = document.getElementById('server-info');
+    if (el && data) {
+      el.textContent = `Server running on port ${data.port} | OS: ${data.os}`;
     }
+  } catch {
+    // ignore
   }
-
-  renderPresets(filtered);
-
-  // Update clear button visibility
-  searchClear.hidden = !searchInput.value;
-
-  // Update filter count
-  const total = presetsCache.length;
-  const shown = filtered.length;
-  const hasFilters = activeFilters.length > 0 || searchText || activeDeckFilter;
-  if (hasFilters) {
-    filterCountEl.textContent = `Showing ${shown} of ${total} preset${total === 1 ? '' : 's'}`;
-  } else {
-    filterCountEl.textContent = '';
-  }
-
-  // Update status
-  if (hasFilters) {
-    setStatus(`Showing ${shown} of ${total}.`);
-  } else {
-    setStatus(`Loaded ${total} preset${total === 1 ? '' : 's'}.`);
-  }
-
-  // Update deck filter chip
-  renderDeckFilterChip();
 }
 
-function renderDeckFilterChip() {
-  // Remove existing deck chip if any
-  const existing = filterChipsEl.querySelector('.deck-chip');
-  if (existing) existing.remove();
-
-  if (!activeDeckFilter) return;
-
-  const chip = document.createElement('span');
-  chip.className = 'filter-chip deck-chip';
-  chip.textContent = `🗂 ${activeDeckFilter}`;
-
-  const removeBtn = document.createElement('button');
-  removeBtn.type = 'button';
-  removeBtn.className = 'filter-chip-remove';
-  removeBtn.setAttribute('aria-label', 'Remove deck filter');
-  removeBtn.textContent = '\u00d7';
-  removeBtn.addEventListener('click', () => {
-    activeDeckFilter = '';
-    deckSelector.value = '';
-    applyFiltersAndRender();
-  });
-
-  chip.appendChild(removeBtn);
-  filterChipsEl.appendChild(chip);
-}
-
-function renderFilterChips() {
-  // Preserve deck chip
-  const deckChip = filterChipsEl.querySelector('.deck-chip');
-  filterChipsEl.innerHTML = '';
-  if (deckChip) filterChipsEl.appendChild(deckChip);
-
-  activeFilters.forEach((f, idx) => {
-    const chip = document.createElement('span');
-    chip.className = `filter-chip ${f.type}-chip`;
-    chip.textContent = f.type === 'tag' ? `#${f.value}` : f.value;
-
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'filter-chip-remove';
-    removeBtn.setAttribute('aria-label', `Remove ${f.value} filter`);
-    removeBtn.textContent = '\u00d7';
-    removeBtn.addEventListener('click', () => {
-      activeFilters.splice(idx, 1);
-      applyFiltersAndRender();
-      renderFilterChips();
-      updateSuggestions();
-    });
-
-    chip.appendChild(removeBtn);
-    filterChipsEl.appendChild(chip);
-  });
-}
-
-function addFilter(type, value) {
-  const normalized = value.toLowerCase().trim();
-  if (!normalized) return;
-  // Check if already active
-  if (activeFilters.some((f) => f.type === type && f.value.toLowerCase() === normalized)) return;
-  activeFilters.push({ type, value: normalized });
-  applyFiltersAndRender();
-  renderFilterChips();
-  // Clear search input and suggestions when a filter is added
-  searchInput.value = '';
-  searchClear.hidden = true;
-  hideSuggestions();
-}
-
-function getSuggestions(query) {
-  const q = query.toLowerCase().trim();
-  if (!q) return [];
-  const { tags, engines } = gatherAllTagsEngines(presetsCache);
-  const results = [];
-
-  // Only suggest tags/engines that aren't already active filters
-  const activeTagValues = new Set(activeFilters.filter((f) => f.type === 'tag').map((f) => f.value.toLowerCase()));
-  const activeEngineValues = new Set(activeFilters.filter((f) => f.type === 'engine').map((f) => f.value.toLowerCase()));
-
-  tags.forEach((t) => {
-    if (!activeTagValues.has(t) && t.includes(q)) {
-      results.push({ type: 'tag', value: t });
-    }
-  });
-  engines.forEach((e) => {
-    if (!activeEngineValues.has(e) && e.includes(q)) {
-      results.push({ type: 'engine', value: e });
-    }
-  });
-
-  // Limit to 10 suggestions
-  return results.slice(0, 10);
-}
-
-function renderSuggestions() {
-  const query = searchInput.value.trim();
-  currentSuggestions = query ? getSuggestions(query) : [];
-  suggestionHighlightIndex = -1;
-
-  searchSuggestions.innerHTML = '';
-  if (currentSuggestions.length === 0) {
-    hideSuggestions();
-    return;
-  }
-
-  currentSuggestions.forEach((s, idx) => {
-    const item = document.createElement('div');
-    item.className = 'suggestion-item';
-    item.setAttribute('role', 'option');
-
-    const typeBadge = document.createElement('span');
-    typeBadge.className = `suggestion-type ${s.type}`;
-    typeBadge.textContent = s.type;
-
-    const label = document.createElement('span');
-    label.className = 'suggestion-label';
-    // Highlight matching portion
-    const q = query.toLowerCase();
-    const val = s.value;
-    const idx_pos = val.indexOf(q);
-    if (idx_pos >= 0) {
-      label.textContent = val;
-    } else {
-      label.textContent = val;
-    }
-
-    item.append(typeBadge, label);
-    item.addEventListener('click', () => {
-      addFilter(s.type, s.value);
-    });
-    searchSuggestions.appendChild(item);
-  });
-
-  searchSuggestions.classList.add('visible');
-}
-
-function hideSuggestions() {
-  searchSuggestions.classList.remove('visible');
-  currentSuggestions = [];
-  suggestionHighlightIndex = -1;
-}
-
-function updateSuggestions() {
-  renderSuggestions();
-}
-
-// Search input events
-let searchDebounceTimer;
-searchInput.addEventListener('input', () => {
-  searchClear.hidden = !searchInput.value;
-  clearTimeout(searchDebounceTimer);
-  searchDebounceTimer = setTimeout(() => {
-    applyFiltersAndRender();
-    updateSuggestions();
-  }, 120);
-});
-
-searchInput.addEventListener('focus', () => {
-  updateSuggestions();
-});
-
-searchInput.addEventListener('keydown', (e) => {
-  const items = searchSuggestions.querySelectorAll('.suggestion-item');
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    suggestionHighlightIndex = Math.min(suggestionHighlightIndex + 1, items.length - 1);
-    items.forEach((it, i) => it.classList.toggle('highlighted', i === suggestionHighlightIndex));
-    if (items[suggestionHighlightIndex]) items[suggestionHighlightIndex].scrollIntoView({ block: 'nearest' });
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    suggestionHighlightIndex = Math.max(suggestionHighlightIndex - 1, 0);
-    items.forEach((it, i) => it.classList.toggle('highlighted', i === suggestionHighlightIndex));
-    if (items[suggestionHighlightIndex]) items[suggestionHighlightIndex].scrollIntoView({ block: 'nearest' });
-  } else if (e.key === 'Enter') {
-    if (suggestionHighlightIndex >= 0 && suggestionHighlightIndex < currentSuggestions.length) {
-      e.preventDefault();
-      const s = currentSuggestions[suggestionHighlightIndex];
-      addFilter(s.type, s.value);
-    } else {
-      // Just apply the text filter
-      hideSuggestions();
-      applyFiltersAndRender();
-    }
-  } else if (e.key === 'Escape') {
-    hideSuggestions();
-    searchInput.blur();
-  }
-});
-
-searchClear.addEventListener('click', () => {
-  searchInput.value = '';
-  searchClear.hidden = true;
-  hideSuggestions();
-  applyFiltersAndRender();
-  searchInput.focus();
-});
-
-// Close suggestions when clicking outside
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.search-bar')) {
-    hideSuggestions();
-  }
-});
-
-function setStatus(message, isError = false) {
-  statusEl.textContent = message;
-  statusEl.style.color = isError ? 'var(--danger)' : 'var(--muted)';
-}
+// --------------------------------------------------------------------------
+// Heartbeat
+// --------------------------------------------------------------------------
+let heartbeatInterval = null;
 
 function startHeartbeat() {
-  const sendHeartbeat = () => {
-    fetch('/api/heartbeat', {
-      method: 'POST',
-      keepalive: true,
-    }).catch(() => {});
-  };
-
-  sendHeartbeat();
-  window.setInterval(sendHeartbeat, 30000);
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      sendHeartbeat();
+  if (heartbeatInterval) return;
+  heartbeatInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/heartbeat`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        const statusEl = document.getElementById('status');
+        if (statusEl) {
+          statusEl.textContent = data.message || '';
+        }
+      }
+    } catch {
+      // ignore heartbeat failures
     }
-  });
-  window.addEventListener('focus', sendHeartbeat);
-  window.addEventListener('pagehide', sendHeartbeat);
+  }, 30000);
 }
 
-function slugify(value) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-+/g, '-');
-}
+// --------------------------------------------------------------------------
+// Shared caches
+// --------------------------------------------------------------------------
+let presetsCache = [];
+let decksCache = [];
+let favouritesCache = [];
 
-function tagsToText(tags) {
-  return (tags || []).join(', ');
-}
+// --------------------------------------------------------------------------
+// View mode state
+// --------------------------------------------------------------------------
+let viewMode = 'single'; // 'single' | 'dual'
 
-function textToTags(text) {
-  return text
-    .split(/[\n,]+/)
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
+// --------------------------------------------------------------------------
+// Pane state factory
+// --------------------------------------------------------------------------
+function createPaneState(paneElement) {
+  const searchInput = paneElement.querySelector('.pane-search-input');
+  const searchClear = paneElement.querySelector('.pane-search-clear');
+  const suggestionsContainer = paneElement.querySelector('.pane-search-suggestions');
+  const filterChipsContainer = paneElement.querySelector('.pane-filter-chips');
+  const deckSelector = paneElement.querySelector('.pane-deck-selector');
+  const presetsContainer = paneElement.querySelector('.pane-presets');
+  const filterCountSpan = paneElement.querySelector('.pane-filter-count');
 
-function copyToClipboard(text) {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    return navigator.clipboard.writeText(text).catch(() => {});
-  }
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand('copy');
-  document.body.removeChild(textarea);
-  return Promise.resolve();
-}
-
-function createCopyButton(commandText) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'copy-button';
-  btn.setAttribute('aria-label', 'Copy command to clipboard');
-  btn.setAttribute('title', 'Copy command');
-  btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-
-  btn.addEventListener('click', async () => {
-    if (!commandText) return;
-    await copyToClipboard(commandText);
-    const originalHTML = btn.innerHTML;
-    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-    setTimeout(() => {
-      btn.innerHTML = originalHTML;
-    }, 1500);
-  });
-
-  return btn;
-}
-
-function createTag(text) {
-  const tag = document.createElement('span');
-  tag.className = 'tag';
-  tag.textContent = text;
-  return tag;
-}
-
-function createEngineBadge(engine) {
-  const badge = document.createElement('span');
-  const normalizedEngine = (engine || 'unknown').toLowerCase();
-  badge.className = `engine-badge engine-${slugify(normalizedEngine) || 'unknown'}`;
-  badge.textContent = normalizedEngine;
-  return badge;
-}
-
-function renderEmpty(message) {
-  presetsEl.innerHTML = '';
-  const empty = document.createElement('div');
-  empty.className = 'empty';
-  empty.textContent = message;
-  presetsEl.appendChild(empty);
-}
-
-function readEditorValues() {
   return {
-    name: nameInput.value.trim(),
-    engine: engineInput.value.trim(),
-    model: modelInput.value.trim(),
-    tags: textToTags(tagsInput.value),
-    description: descriptionInput.value.trim(),
-    command: commandInput.value.trim(),
+    el: paneElement,
+    searchInput,
+    searchClear,
+    suggestionsContainer,
+    filterChipsContainer,
+    deckSelector,
+    presetsContainer,
+    filterCountSpan,
+    searchText: '',
+    activeFilters: [], // [{type: 'tag'|'engine', value: string}]
+    activeDeckFilter: '',
+    suggestionHighlightIndex: -1,
+    currentSuggestions: [],
   };
 }
 
-function fillEditor(preset) {
-  nameInput.value = preset.name || '';
-  engineInput.value = preset.engine || '';
-  modelInput.value = preset.model || '';
-  tagsInput.value = tagsToText(preset.tags);
-  descriptionInput.value = preset.description || '';
-  commandInput.value = preset.command || '';
-}
+// Pane instances
+let leftPane = null;
+let rightPane = null;
 
-function openEditor(preset) {
-  const isExisting = Boolean(preset && preset.id);
-  activePresetId = isExisting ? preset.id : '';
-  selectedEngine = preset && preset.engine ? preset.engine : '';
-
-  dialogTitle.textContent = isExisting ? `Edit ${preset.name || preset.id}` : 'Create preset';
-  dialogSubtitle.textContent = isExisting
-    ? 'Update the preset fields and save the JSON file.'
-    : 'Fill out the fields and create a new preset JSON file.';
-  editorSaveButton.textContent = isExisting ? 'Save preset' : 'Create preset';
-
-  fillEditor(preset || { name: '', engine: '', model: '', tags: [], description: '', command: '' });
-  editorFeedback.classList.remove('error');
-  editorFeedback.textContent = '';
-
-  if (typeof dialog.showModal === 'function') {
-    dialog.showModal();
-  } else {
-    dialog.setAttribute('open', '');
-  }
-
-  nameInput.focus();
-}
-
-function closeEditor() {
-  if (dialog.open) {
-    dialog.close();
-  }
-  editorFeedback.classList.remove('error');
-  editorFeedback.textContent = '';
-}
-
-function openDuplicateEditor(preset) {
-  // Clear activePresetId so it creates a NEW preset, not edits the existing one
-  activePresetId = '';
-  selectedEngine = preset.engine || '';
-  // Store the source preset ID so the backend can propagate deck/favourite membership
-  window._duplicateSourcePresetId = preset.id;
-
-  dialogTitle.textContent = `Duplicate ${preset.name || preset.id}`;
-  dialogSubtitle.textContent = 'Modify the fields and save as a new preset.';
-  editorSaveButton.textContent = 'Create preset';
-
-  // Pre-fill with copied values, appending " (copy)" to the name
-  nameInput.value = (preset.name || '') + ' (copy)';
-  engineInput.value = preset.engine || '';
-  modelInput.value = preset.model || '';
-  tagsInput.value = tagsToText(preset.tags);
-  descriptionInput.value = preset.description || '';
-  commandInput.value = preset.command || '';
-
-  editorFeedback.classList.remove('error');
-  editorFeedback.textContent = '';
-
-  if (typeof dialog.showModal === 'function') {
-    dialog.showModal();
-  } else {
-    dialog.setAttribute('open', '');
-  }
-
-  nameInput.focus();
-  nameInput.select();
-}
-
-function createPresetCard(preset, index) {
-  const card = document.createElement('article');
+// --------------------------------------------------------------------------
+// Preset card creation (shared across panes)
+// --------------------------------------------------------------------------
+function createPresetCard(preset, isFavourite) {
+  const card = document.createElement('div');
   card.className = 'card';
-  card.style.animationDelay = `${Math.min(index * 70, 350)}ms`;
+  card.dataset.id = preset.id;
 
   const header = document.createElement('div');
   header.className = 'card-header';
 
-  const titleWrap = document.createElement('div');
+  const titleCol = document.createElement('div');
+  titleCol.className = 'card-title-col';
 
-  // Favourite star button
-  const starBtn = document.createElement('button');
-  starBtn.type = 'button';
-  starBtn.className = 'favourite-star';
-  starBtn.setAttribute('title', preset.is_favourite ? 'Remove from favourites' : 'Add to favourites');
-  starBtn.setAttribute('aria-label', starBtn.getAttribute('title'));
-  starBtn.textContent = preset.is_favourite ? '★' : '☆';
-  if (preset.is_favourite) starBtn.classList.add('active');
+  const titleRow = document.createElement('div');
+  titleRow.className = 'card-title-row';
 
-  starBtn.addEventListener('click', async (e) => {
+  const star = document.createElement('button');
+  star.className = 'favourite-star' + (isFavourite ? ' active' : '');
+  star.textContent = isFavourite ? '★' : '☆';
+  star.title = isFavourite ? 'Remove from favourites' : 'Add to favourites';
+  star.addEventListener('click', async (e) => {
     e.stopPropagation();
-    const isNewFav = !starBtn.classList.contains('active');
-    if (isNewFav) {
-      await fetch('/api/favourites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preset_id: preset.id }),
-      });
-    } else {
-      await fetch(`/api/favourites/${encodeURIComponent(preset.id)}`, { method: 'DELETE' });
-    }
-    // Reload presets to get updated ordering
-    await loadPresets();
-  });
-
-   const title = document.createElement('h2');
-   title.textContent = preset.name || preset.id;
-
-   // Wrap star and title in the same inline row
-   const titleRow = document.createElement('div');
-   titleRow.className = 'card-title-row';
-   titleRow.append(starBtn, title);
-
-   const metaRow = document.createElement('div');
-   metaRow.className = 'meta-row';
-
-   const model = document.createElement('p');
-   model.className = 'model';
-   model.textContent = preset.model || 'No model specified';
-
-   metaRow.append(model, createEngineBadge(preset.engine));
-   titleWrap.append(titleRow, metaRow);
-
-  const actionButtons = document.createElement('div');
-  actionButtons.className = 'action-buttons';
-
-  const runButton = document.createElement('button');
-  runButton.type = 'button';
-  runButton.textContent = 'Run';
-
-  const editButton = document.createElement('button');
-  editButton.type = 'button';
-  editButton.textContent = 'Edit';
-  editButton.className = 'secondary-button';
-
-  const duplicateButton = document.createElement('button');
-  duplicateButton.type = 'button';
-  duplicateButton.className = 'subtle-button';
-  duplicateButton.setAttribute('title', 'Duplicate preset');
-  duplicateButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-
-  const deleteButton = document.createElement('button');
-  deleteButton.type = 'button';
-  deleteButton.textContent = 'Delete';
-  deleteButton.className = 'danger-button';
-
-  duplicateButton.addEventListener('click', () => {
-    openDuplicateEditor(preset);
-  });
-
-  actionButtons.append(runButton, editButton, duplicateButton, deleteButton);
-  header.append(titleWrap, actionButtons);
-
-  const description = document.createElement('p');
-  description.className = 'description';
-  description.textContent = preset.description || 'No description provided.';
-
-  const tags = document.createElement('div');
-  tags.className = 'tags';
-  (preset.tags || []).forEach((tagText) => {
-    tags.appendChild(createTag(tagText));
-  });
-
-  const commandWrap = document.createElement('div');
-  commandWrap.className = 'command-wrap';
-  const command = document.createElement('pre');
-  command.className = 'command';
-  command.textContent = preset.command || '';
-  const copyBtn = createCopyButton(preset.command || '');
-  commandWrap.append(command, copyBtn);
-
-  const feedback = document.createElement('span');
-  feedback.className = 'feedback';
-
-  runButton.addEventListener('click', async () => {
-    const originalLabel = runButton.textContent;
-    runButton.disabled = true;
-    feedback.classList.remove('error');
-    feedback.textContent = 'Launching...';
-
     try {
-      const response = await fetch(`/api/run/${encodeURIComponent(preset.id)}`, {
-        method: 'POST',
+      const resp = await fetch(`${apiBase}/api/favourites/${encodeURIComponent(preset.id)}`, {
+        method: isFavourite ? 'DELETE' : 'POST',
       });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error || `Request failed with status ${response.status}`);
+      if (!resp.ok && resp.status !== 204) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || 'Favourite toggle failed');
       }
-
-      feedback.textContent = 'Launched in a new terminal.';
-      runButton.textContent = 'Launched';
+      if (isFavourite) {
+        star.classList.remove('active');
+        star.textContent = '☆';
+        star.title = 'Add to favourites';
+      } else {
+        star.classList.add('active');
+        star.textContent = '★';
+        star.title = 'Remove from favourites';
+      }
     } catch (error) {
-      feedback.classList.add('error');
-      feedback.textContent = error instanceof Error ? error.message : 'Launch failed.';
-      runButton.textContent = originalLabel;
-    } finally {
-      runButton.disabled = false;
-      window.setTimeout(() => {
-        if (runButton.textContent === 'Launched') {
-          runButton.textContent = originalLabel;
-        }
-      }, 1400);
+      setStatus(error.message, true);
     }
   });
 
-  editButton.addEventListener('click', () => {
-    openEditor(preset);
+  const h2 = document.createElement('h2');
+  h2.textContent = preset.name || preset.id;
+
+  titleRow.append(star, h2);
+
+  const model = document.createElement('p');
+  model.className = 'model';
+  model.textContent = preset.model || '';
+
+  titleCol.append(titleRow, model);
+
+  const actions = document.createElement('div');
+  actions.className = 'action-buttons';
+
+  // Run button
+  const runBtn = document.createElement('button');
+  runBtn.type = 'button';
+  runBtn.textContent = 'Run';
+  runBtn.title = 'Execute command in terminal';
+  runBtn.addEventListener('click', () => {
+    window.open(`${apiBase}/api/run/${encodeURIComponent(preset.id)}`, '_blank');
   });
 
-  deleteButton.addEventListener('click', async () => {
-    if (!window.confirm(`Delete preset ${preset.name || preset.id}?`)) {
-      return;
-    }
+  // Edit button
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.textContent = 'Edit';
+  editBtn.className = 'secondary-button';
+  editBtn.addEventListener('click', () => {
+    openEditorForPreset(preset);
+  });
 
-    const originalLabel = deleteButton.textContent;
-    deleteButton.disabled = true;
-    deleteButton.textContent = 'Deleting...';
-    feedback.classList.remove('error');
-    feedback.textContent = '';
-
+  // Duplicate button
+  const dupBtn = document.createElement('button');
+  dupBtn.type = 'button';
+  dupBtn.textContent = 'Duplicate';
+  dupBtn.className = 'secondary-button';
+  dupBtn.addEventListener('click', async () => {
     try {
-      const response = await fetch(`/api/presets/${encodeURIComponent(preset.id)}`, {
+      setStatus('Duplicating preset...');
+      const resp = await fetch(`${apiBase}/api/duplicate/${encodeURIComponent(preset.id)}`, {
+        method: 'POST',
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || 'Duplicate failed');
+      }
+      const newPreset = await resp.json();
+      setStatus(`Preset duplicated as "${newPreset.name || newPreset.id}".`);
+      await loadPresets();
+      renderAllPanes();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  });
+
+  // Delete button
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.textContent = 'Delete';
+  delBtn.className = 'danger-button';
+  delBtn.addEventListener('click', async () => {
+    if (!window.confirm(`Delete preset "${preset.name || preset.id}"?`)) return;
+    try {
+      setStatus('Deleting preset...');
+      const resp = await fetch(`${apiBase}/api/preset/${encodeURIComponent(preset.id)}`, {
         method: 'DELETE',
       });
-
-      if (!response.ok && response.status !== 204) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error || `Request failed with status ${response.status}`);
+      if (!resp.ok && resp.status !== 204) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || 'Delete failed');
       }
-
       setStatus('Preset deleted.');
       await loadPresets();
+      renderAllPanes();
     } catch (error) {
-      feedback.classList.add('error');
-      feedback.textContent = error instanceof Error ? error.message : 'Delete failed.';
-    } finally {
-      deleteButton.disabled = false;
-      deleteButton.textContent = originalLabel;
+      setStatus(error.message, true);
     }
   });
 
-  card.append(header, description, tags, commandWrap, feedback);
+  actions.append(runBtn, editBtn, dupBtn, delBtn);
+
+  header.append(titleCol, actions);
+  card.appendChild(header);
+
+  // Tags
+  if (preset.tags && preset.tags.length) {
+    const tags = document.createElement('div');
+    tags.className = 'tags';
+    preset.tags.forEach((tag) => {
+      const span = document.createElement('span');
+      span.className = 'tag';
+      span.textContent = tag;
+      tags.appendChild(span);
+    });
+    card.appendChild(tags);
+  }
+
+  // Engine badge
+  if (preset.engine) {
+    const metaRow = document.createElement('div');
+    metaRow.className = 'meta-row';
+    const badge = document.createElement('span');
+    badge.className = `engine-badge engine-${preset.engine.toLowerCase().replace(/[^a-z0-9\-]/g, '')}`;
+    badge.textContent = preset.engine;
+    metaRow.appendChild(badge);
+    card.appendChild(metaRow);
+  }
+
+  // Description
+  if (preset.description) {
+    const desc = document.createElement('p');
+    desc.className = 'description';
+    desc.textContent = preset.description;
+    card.appendChild(desc);
+  }
+
+  // Command
+  if (preset.command) {
+    const wrap = document.createElement('div');
+    wrap.className = 'command-wrap';
+
+    const pre = document.createElement('pre');
+    pre.className = 'command';
+    pre.textContent = preset.command;
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'copy-button';
+    copyBtn.title = 'Copy command';
+    copyBtn.setAttribute('aria-label', 'Copy command to clipboard');
+    copyBtn.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+    copyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(preset.command);
+        copyBtn.title = 'Copied!';
+        setTimeout(() => {
+          copyBtn.title = 'Copy command';
+        }, 1500);
+      } catch {
+        copyBtn.title = 'Copy failed';
+      }
+    });
+
+    wrap.append(pre, copyBtn);
+    card.appendChild(wrap);
+  }
+
   return card;
 }
 
-function renderPresets(presets) {
-  presetsEl.innerHTML = '';
-
-  if (!Array.isArray(presets) || presets.length === 0) {
-    renderEmpty('No presets found. Use Create to add one.');
-    return;
-  }
-
-  presets.forEach((preset, index) => {
-    presetsEl.appendChild(createPresetCard(preset, index));
-  });
+// --------------------------------------------------------------------------
+// Status helper
+// --------------------------------------------------------------------------
+function setStatus(text, isError = false) {
+  const el = document.getElementById('status');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('error', isError);
 }
 
+// --------------------------------------------------------------------------
+// Data loading
+// --------------------------------------------------------------------------
 async function loadPresets() {
   try {
-    const response = await fetch('/api/presets');
-    if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
-    }
-
-    const presets = await response.json();
-    presetsCache = presets;
-
-    // Build favourites set from presets data
-    favouritesSet = new Set();
-    presets.forEach((p) => {
-      if (p.is_favourite) favouritesSet.add(p.id);
-    });
-
-    applyFiltersAndRender();
-    const presetCount = Array.isArray(presets) ? presets.length : 0;
-    setStatus(`Loaded ${presetCount} preset${presetCount === 1 ? '' : 's'}.`);
+    const res = await fetch(`${apiBase}/api/presets`);
+    if (!res.ok) throw new Error('Failed to load presets');
+    presetsCache = await res.json();
   } catch (error) {
-    renderEmpty('Unable to load presets. Check the backend or refresh after adding valid JSON files.');
-    setStatus(error instanceof Error ? error.message : 'Failed to load presets.', true);
+    setStatus(error.message, true);
   }
 }
 
 async function loadDecks() {
   try {
-    const response = await fetch('/api/decks');
-    if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
-    }
-    decksCache = await response.json();
-    populateDeckSelector();
+    const res = await fetch(`${apiBase}/api/decks`);
+    if (!res.ok) throw new Error('Failed to load decks');
+    decksCache = await res.json();
   } catch (error) {
-    console.error('Failed to load decks:', error);
+    setStatus(error.message, true);
   }
 }
 
-function populateDeckSelector() {
-  deckSelector.innerHTML = '<option value="">All presets</option>';
-  decksCache.forEach((deck) => {
-    const opt = document.createElement('option');
-    opt.value = deck.name;
-    opt.textContent = deck.name;
-    if (deck.name === activeDeckFilter) opt.selected = true;
-    deckSelector.appendChild(opt);
+async function loadFavourites() {
+  try {
+    const res = await fetch(`${apiBase}/api/favourites`);
+    if (!res.ok) throw new Error('Failed to load favourites');
+    const data = await res.json();
+    favouritesCache = data.favourites || data;
+    if (Array.isArray(data) && !Array.isArray(data.favourites)) {
+      favouritesCache = data;
+    }
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+// --------------------------------------------------------------------------
+// Pane-scoped filtering
+// --------------------------------------------------------------------------
+function filterPresetsForPane(pane) {
+  let results = presetsCache.slice();
+
+  // Text search
+  const query = pane.searchText.toLowerCase().trim();
+  if (query) {
+    results = results.filter((p) => {
+      const name = (p.name || '').toLowerCase();
+      const id = (p.id || '').toLowerCase();
+      const model = (p.model || '').toLowerCase();
+      const desc = (p.description || '').toLowerCase();
+      const engine = (p.engine || '').toLowerCase();
+      const tags = (p.tags || []).map((t) => t.toLowerCase());
+      const command = (p.command || '').toLowerCase();
+
+      return (
+        name.includes(query) ||
+        id.includes(query) ||
+        model.includes(query) ||
+        desc.includes(query) ||
+        engine.includes(query) ||
+        tags.some((t) => t.includes(query)) ||
+        command.includes(query)
+      );
+    });
+  }
+
+  // Active tag/engine filters
+  for (const filter of pane.activeFilters) {
+    if (filter.type === 'tag') {
+      const val = filter.value.toLowerCase();
+      results = results.filter((p) => (p.tags || []).map((t) => t.toLowerCase()).includes(val));
+    } else if (filter.type === 'engine') {
+      const val = filter.value.toLowerCase();
+      results = results.filter((p) => (p.engine || '').toLowerCase() === val);
+    }
+  }
+
+  // Deck filter
+  if (pane.activeDeckFilter) {
+    const deck = decksCache.find((d) => d.name === pane.activeDeckFilter);
+    if (deck) {
+      results = results.filter((p) => deck.preset_ids.includes(p.id));
+    } else {
+      results = [];
+    }
+  }
+
+  return results;
+}
+
+// --------------------------------------------------------------------------
+// Pane-scoped rendering
+// --------------------------------------------------------------------------
+function renderPane(pane) {
+  const filtered = filterPresetsForPane(pane);
+
+  // Clear and render preset cards
+  pane.presetsContainer.innerHTML = '';
+
+  if (filtered.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    if (presetsCache.length === 0) {
+      empty.textContent = 'No presets found. Create one to get started.';
+    } else {
+      empty.textContent = 'No presets match the current filters.';
+    }
+    pane.presetsContainer.appendChild(empty);
+  } else {
+    filtered.forEach((preset) => {
+      const isFav = favouritesCache.includes(preset.id);
+      const card = createPresetCard(preset, isFav);
+      pane.presetsContainer.appendChild(card);
+    });
+  }
+
+  // Render filter chips
+  renderFilterChips(pane);
+
+  // Update filter count
+  updateFilterCount(pane);
+
+  // Update search clear button
+  pane.searchClear.hidden = !pane.searchInput.value;
+}
+
+function renderFilterChips(pane) {
+  pane.filterChipsContainer.innerHTML = '';
+
+  pane.activeFilters.forEach((filter) => {
+    const chip = document.createElement('span');
+    chip.className = `filter-chip ${filter.type === 'tag' ? 'tag-chip' : 'engine-chip'}`;
+
+    const label = document.createElement('span');
+    label.textContent = filter.value;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'filter-chip-remove';
+    removeBtn.textContent = '\u00d7';
+    removeBtn.addEventListener('click', () => {
+      pane.activeFilters = pane.activeFilters.filter((f) => f !== filter);
+      renderPane(pane);
+    });
+
+    chip.append(label, removeBtn);
+    pane.filterChipsContainer.appendChild(chip);
+  });
+
+  // Deck filter chip
+  if (pane.activeDeckFilter) {
+    const chip = document.createElement('span');
+    chip.className = 'filter-chip deck-chip';
+
+    const label = document.createElement('span');
+    label.textContent = pane.activeDeckFilter;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'filter-chip-remove';
+    removeBtn.textContent = '\u00d7';
+    removeBtn.addEventListener('click', () => {
+      pane.activeDeckFilter = '';
+      pane.deckSelector.value = '';
+      renderPane(pane);
+    });
+
+    chip.append(label, removeBtn);
+    pane.filterChipsContainer.appendChild(chip);
+  }
+}
+
+function updateFilterCount(pane) {
+  const filtered = filterPresetsForPane(pane);
+  if (pane.searchText || pane.activeFilters.length > 0 || pane.activeDeckFilter) {
+    pane.filterCountSpan.textContent = `${filtered.length} of ${presetsCache.length} presets`;
+  } else {
+    pane.filterCountSpan.textContent = `${presetsCache.length} preset${presetsCache.length === 1 ? '' : 's'}`;
+  }
+}
+
+// --------------------------------------------------------------------------
+// Render all visible panes
+// --------------------------------------------------------------------------
+function renderAllPanes() {
+  if (leftPane) renderPane(leftPane);
+  if (rightPane && !rightPane.el.hidden) renderPane(rightPane);
+}
+
+// --------------------------------------------------------------------------
+// Sync deck selectors
+// --------------------------------------------------------------------------
+function syncDeckSelectors() {
+  [leftPane, rightPane].forEach((pane) => {
+    if (!pane) return;
+    const selector = pane.deckSelector;
+    const currentVal = selector.value;
+    selector.innerHTML = '<option value="">All presets</option>';
+    decksCache.forEach((deck) => {
+      const opt = document.createElement('option');
+      opt.value = deck.name;
+      opt.textContent = deck.name;
+      selector.appendChild(opt);
+    });
+    // Restore selection if still valid
+    const stillValid = [...selector.options].some((o) => o.value === currentVal);
+    selector.value = stillValid ? currentVal : '';
   });
 }
 
-createButton.addEventListener('click', () => {
-  openEditor({ name: '', engine: '', model: '', tags: [], description: '', command: '' });
-});
+// --------------------------------------------------------------------------
+// Suggestions
+// --------------------------------------------------------------------------
+function generateSuggestions(pane) {
+  const query = pane.searchInput.value.toLowerCase().trim();
+  pane.currentSuggestions = [];
 
-shutdownButton.addEventListener('click', async () => {
-  const originalLabel = shutdownButton.textContent;
-  shutdownButton.disabled = true;
-  shutdownButton.textContent = 'Shutting down...';
-  setStatus('Stopping server...');
-
-  try {
-    const response = await fetch('/api/shutdown', { method: 'POST' });
-    if (!response.ok && response.status !== 204) {
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(payload.error || `Request failed with status ${response.status}`);
-    }
-
-    setStatus('Server stopped. Restart PresetDock to continue.');
-  } catch (error) {
-    setStatus(error instanceof Error ? error.message : 'Failed to stop the server.', true);
-  } finally {
-    shutdownButton.disabled = false;
-    shutdownButton.textContent = originalLabel;
-  }
-});
-
-editorCloseButton.addEventListener('click', closeEditor);
-editorCancelButton.addEventListener('click', closeEditor);
-
-editorRunButton.addEventListener('click', async () => {
-  const payload = readEditorValues();
-
-  if (!payload.command || !payload.command.trim()) {
-    editorFeedback.classList.add('error');
-    editorFeedback.textContent = 'Command is required to run a preset.';
+  if (!query) {
+    hideSuggestions(pane);
     return;
   }
 
-  editorRunButton.disabled = true;
-  editorSaveButton.disabled = true;
-  editorFeedback.classList.remove('error');
-  editorFeedback.textContent = 'Running...';
+  const tagSet = new Set();
+  const engineSet = new Set();
+
+  presetsCache.forEach((p) => {
+    (p.tags || []).forEach((t) => {
+      if (t.toLowerCase().includes(query)) tagSet.add(t);
+    });
+    if (p.engine && p.engine.toLowerCase().includes(query)) {
+      engineSet.add(p.engine);
+    }
+  });
+
+  tagSet.forEach((t) => {
+    pane.currentSuggestions.push({ type: 'tag', value: t });
+  });
+  engineSet.forEach((e) => {
+    pane.currentSuggestions.push({ type: 'engine', value: e });
+  });
+
+  pane.suggestionHighlightIndex = -1;
+  renderSuggestions(pane);
+}
+
+function renderSuggestions(pane) {
+  pane.suggestionsContainer.innerHTML = '';
+
+  if (pane.currentSuggestions.length === 0) {
+    hideSuggestions(pane);
+    return;
+  }
+
+  pane.currentSuggestions.forEach((sug, idx) => {
+    const item = document.createElement('div');
+    item.className = 'suggestion-item';
+    if (idx === pane.suggestionHighlightIndex) {
+      item.classList.add('highlighted');
+    }
+
+    const typeBadge = document.createElement('span');
+    typeBadge.className = `suggestion-type ${sug.type}`;
+    typeBadge.textContent = sug.type;
+
+    const label = document.createElement('span');
+    label.className = 'suggestion-label';
+    label.textContent = sug.value;
+
+    item.append(typeBadge, label);
+
+    item.addEventListener('click', () => {
+      applySuggestionFilter(pane, sug);
+    });
+
+    pane.suggestionsContainer.appendChild(item);
+  });
+
+  pane.suggestionsContainer.classList.add('visible');
+}
+
+function hideSuggestions(pane) {
+  pane.suggestionsContainer.classList.remove('visible');
+  pane.suggestionHighlightIndex = -1;
+}
+
+function applySuggestionFilter(pane, suggestion) {
+  // Check if filter already exists
+  const exists = pane.activeFilters.some(
+    (f) => f.type === suggestion.type && f.value.toLowerCase() === suggestion.value.toLowerCase()
+  );
+  if (!exists) {
+    pane.activeFilters.push({ type: suggestion.type, value: suggestion.value });
+  }
+  pane.searchInput.value = '';
+  pane.searchClear.hidden = true;
+  hideSuggestions(pane);
+  renderPane(pane);
+}
+
+// --------------------------------------------------------------------------
+// Wire pane events
+// --------------------------------------------------------------------------
+function wirePaneEvents(pane) {
+  // Search input
+  let searchTimeout;
+  pane.searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    pane.searchText = pane.searchInput.value;
+    searchTimeout = setTimeout(() => {
+      generateSuggestions(pane);
+      renderPane(pane);
+    }, 150);
+  });
+
+  // Search clear
+  pane.searchClear.addEventListener('click', () => {
+    pane.searchInput.value = '';
+    pane.searchText = '';
+    pane.searchClear.hidden = true;
+    hideSuggestions(pane);
+    renderPane(pane);
+    pane.searchInput.focus();
+  });
+
+  // Keyboard navigation for suggestions
+  pane.searchInput.addEventListener('keydown', (e) => {
+    if (!pane.suggestionsContainer.classList.contains('visible')) return;
+    const count = pane.currentSuggestions.length;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      pane.suggestionHighlightIndex = Math.min(pane.suggestionHighlightIndex + 1, count - 1);
+      renderSuggestions(pane);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      pane.suggestionHighlightIndex = Math.max(pane.suggestionHighlightIndex - 1, 0);
+      renderSuggestions(pane);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (pane.suggestionHighlightIndex >= 0 && pane.currentSuggestions[pane.suggestionHighlightIndex]) {
+        applySuggestionFilter(pane, pane.currentSuggestions[pane.suggestionHighlightIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      hideSuggestions(pane);
+    }
+  });
+
+  // Deck selector
+  pane.deckSelector.addEventListener('change', () => {
+    pane.activeDeckFilter = pane.deckSelector.value;
+    renderPane(pane);
+  });
+}
+
+// --------------------------------------------------------------------------
+// View mode toggle
+// --------------------------------------------------------------------------
+function setViewMode(mode) {
+  viewMode = mode;
+  const container = document.getElementById('split-container');
+  const rightEl = document.getElementById('pane-right');
+  const toggleBtn = document.getElementById('view-toggle');
+
+  if (mode === 'dual') {
+    container.classList.remove('single-mode');
+    container.classList.add('dual-mode');
+    rightEl.hidden = false;
+    toggleBtn.querySelector('span').textContent = 'Single View';
+
+    // Clone left state into right when entering dual mode
+    if (rightPane) {
+      rightPane.searchText = leftPane.searchText;
+      rightPane.activeFilters = leftPane.activeFilters.slice();
+      rightPane.activeFilters = rightPane.activeFilters.map((f) => ({ ...f }));
+      rightPane.activeDeckFilter = leftPane.activeDeckFilter;
+      rightPane.searchInput.value = leftPane.searchInput.value;
+      rightPane.searchClear.hidden = leftPane.searchClear.hidden;
+      rightPane.deckSelector.value = leftPane.deckSelector.value;
+      renderPane(rightPane);
+    }
+  } else {
+    // Single mode: keep left pane state, hide right
+    container.classList.remove('dual-mode');
+    container.classList.add('single-mode');
+    rightEl.hidden = true;
+    toggleBtn.querySelector('span').textContent = 'Dual View';
+  }
+}
+
+// --------------------------------------------------------------------------
+// Editor dialog
+// --------------------------------------------------------------------------
+const presetDialog = document.getElementById('preset-dialog');
+const presetEditor = document.getElementById('preset-editor');
+const presetDialogTitle = document.getElementById('preset-dialog-title');
+const presetDialogSubtitle = document.getElementById('preset-dialog-subtitle');
+const presetName = document.getElementById('preset-name');
+const presetEngine = document.getElementById('preset-engine');
+const presetModel = document.getElementById('preset-model');
+const presetTags = document.getElementById('preset-tags');
+const presetDescription = document.getElementById('preset-description');
+const presetCommand = document.getElementById('preset-command');
+const presetEditorFeedback = document.getElementById('preset-editor-feedback');
+const editorSave = document.getElementById('editor-save');
+const editorCancel = document.getElementById('editor-cancel');
+const editorClose = document.getElementById('editor-close');
+const editorRun = document.getElementById('editor-run');
+const copyCommandBtn = document.getElementById('copy-command-btn');
+
+let editingPresetId = null;
+
+function openEditorForPreset(preset) {
+  editingPresetId = preset.id;
+  presetDialogTitle.textContent = 'Edit preset';
+  presetDialogSubtitle.textContent = `Editing: ${preset.name || preset.id}`;
+  presetName.value = preset.name || '';
+  presetEngine.value = preset.engine || '';
+  presetModel.value = preset.model || '';
+  presetTags.value = (preset.tags || []).join(', ');
+  presetDescription.value = preset.description || '';
+  presetCommand.value = preset.command || '';
+  presetEditorFeedback.textContent = '';
+  presetEditorFeedback.classList.remove('error');
+  editorSave.textContent = 'Save changes';
+  presetDialog.showModal();
+}
+
+function openCreateEditor() {
+  editingPresetId = null;
+  presetDialogTitle.textContent = 'Create preset';
+  presetDialogSubtitle.textContent = 'Fill out the fields and save the preset JSON.';
+  presetName.value = '';
+  presetEngine.value = '';
+  presetModel.value = '';
+  presetTags.value = '';
+  presetDescription.value = '';
+  presetCommand.value = '';
+  presetEditorFeedback.textContent = '';
+  presetEditorFeedback.classList.remove('error');
+  editorSave.textContent = 'Save preset';
+  presetDialog.showModal();
+}
+
+function closeEditor() {
+  presetDialog.close();
+  editingPresetId = null;
+}
+
+presetEditor.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const tagsText = presetTags.value;
+  const tags = tagsText
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const payload = {
+    name: presetName.value.trim(),
+    engine: presetEngine.value.trim(),
+    model: presetModel.value.trim(),
+    tags,
+    description: presetDescription.value.trim(),
+    command: presetCommand.value.trim(),
+  };
+
+  if (!payload.name && !payload.command) {
+    presetEditorFeedback.classList.add('error');
+    presetEditorFeedback.textContent = 'At least a name or command is required.';
+    return;
+  }
+
+  editorSave.disabled = true;
+  presetEditorFeedback.classList.remove('error');
+  presetEditorFeedback.textContent = 'Saving...';
 
   try {
-    const response = await fetch('/api/run', {
+    let resp;
+    if (editingPresetId) {
+      resp = await fetch(`${apiBase}/api/preset/${encodeURIComponent(editingPresetId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      resp = await fetch(`${apiBase}/api/preset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || 'Save failed');
+    }
+
+    presetEditorFeedback.textContent = editingPresetId ? 'Preset updated.' : 'Preset created.';
+    await loadPresets();
+    await loadFavourites();
+    renderAllPanes();
+    setTimeout(closeEditor, 600);
+  } catch (error) {
+    presetEditorFeedback.classList.add('error');
+    presetEditorFeedback.textContent = error.message || 'Save failed.';
+  } finally {
+    editorSave.disabled = false;
+  }
+});
+
+editorRun.addEventListener('click', async () => {
+  const command = presetCommand.value.trim();
+  if (!command) {
+    presetEditorFeedback.classList.add('error');
+    presetEditorFeedback.textContent = 'Command is required to run.';
+    return;
+  }
+
+  editorRun.disabled = true;
+  presetEditorFeedback.classList.remove('error');
+  presetEditorFeedback.textContent = 'Launching...';
+
+  try {
+    const resp = await fetch(`${apiBase}/api/run-command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ command }),
     });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.error || `Request failed with status ${response.status}`);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || 'Run failed');
     }
 
-    editorFeedback.classList.remove('error');
-    editorFeedback.textContent = 'Preset launched!';
-
-    // Refresh state
-    await Promise.all([loadPresets(), loadDecks()]);
+    presetEditorFeedback.textContent = 'Command launched.';
   } catch (error) {
-    editorFeedback.classList.add('error');
-    editorFeedback.textContent = error instanceof Error ? error.message : 'Failed to run preset.';
+    presetEditorFeedback.classList.add('error');
+    presetEditorFeedback.textContent = error.message || 'Run failed.';
   } finally {
-    editorRunButton.disabled = false;
-    editorSaveButton.disabled = false;
+    editorRun.disabled = false;
   }
 });
 
-dialog.addEventListener('cancel', () => {
-  editorFeedback.classList.remove('error');
-  editorFeedback.textContent = '';
-});
-
-engineInput.addEventListener('input', () => {
-  selectedEngine = engineInput.value.trim();
-});
-
-editorForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-
-  const payload = readEditorValues();
-  if (!payload.name) {
-    editorFeedback.classList.add('error');
-    editorFeedback.textContent = 'Preset name is required.';
-    return;
-  }
-
-  if (!payload.engine) {
-    payload.engine = selectedEngine || 'unknown';
-  }
-
-  // Include source_preset_id when duplicating
-  if (window._duplicateSourcePresetId) {
-    payload.source_preset_id = window._duplicateSourcePresetId;
-    window._duplicateSourcePresetId = null;
-  }
-
-  const isEditing = Boolean(activePresetId);
-  const endpoint = isEditing ? `/api/presets/${encodeURIComponent(activePresetId)}` : '/api/presets';
-  const method = isEditing ? 'PUT' : 'POST';
-
-  editorSaveButton.disabled = true;
-  editorFeedback.classList.remove('error');
-  editorFeedback.textContent = isEditing ? 'Saving...' : 'Creating...';
-
+copyCommandBtn.addEventListener('click', async () => {
+  const command = presetCommand.value;
+  if (!command) return;
   try {
-    const response = await fetch(endpoint, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => ({}));
-      throw new Error(errorPayload.error || `Request failed with status ${response.status}`);
-    }
-
-    editorFeedback.textContent = isEditing ? 'Preset saved.' : 'Preset created.';
-    setStatus(isEditing ? 'Preset updated.' : 'Preset created.');
-    closeEditor();
-    await loadPresets();
-  } catch (error) {
-    editorFeedback.classList.add('error');
-    editorFeedback.textContent = error instanceof Error ? error.message : 'Save failed.';
-  } finally {
-    editorSaveButton.disabled = false;
+    await navigator.clipboard.writeText(command);
+    copyCommandBtn.title = 'Copied!';
+    setTimeout(() => {
+      copyCommandBtn.title = 'Copy command';
+    }, 1500);
+  } catch {
+    copyCommandBtn.title = 'Copy failed';
   }
 });
 
-// Deck selector element
-const deckSelector = document.getElementById('deck-selector');
-const decksButton = document.getElementById('decks-button');
+editorCancel.addEventListener('click', closeEditor);
+editorClose.addEventListener('click', closeEditor);
 
-deckSelector.addEventListener('change', () => {
-  activeDeckFilter = deckSelector.value || '';
-  applyFiltersAndRender();
-});
-
-// --- Decks Dialog ---
+// --------------------------------------------------------------------------
+// Deck dialog
+// --------------------------------------------------------------------------
 const decksDialog = document.getElementById('decks-dialog');
-const decksCloseButton = document.getElementById('decks-close');
-const deckNewButton = document.getElementById('deck-new-button');
 const decksListEl = document.getElementById('decks-list');
 const deckEditorEmpty = document.getElementById('deck-editor-empty');
 const deckEditorForm = document.getElementById('deck-editor-form');
 const deckNameInput = document.getElementById('deck-name-input');
 const deckPresetsSearch = document.getElementById('deck-presets-search');
 const deckPresetsList = document.getElementById('deck-presets-list');
+const deckNewButton = document.getElementById('deck-new-button');
 const deckSaveButton = document.getElementById('deck-save-button');
 const deckDeleteButton = document.getElementById('deck-delete-button');
 const deckFeedback = document.getElementById('deck-feedback');
 
-decksButton.addEventListener('click', () => {
-  openDecksDialog();
-});
+let editingDeckName = null;
 
-decksCloseButton.addEventListener('click', closeDecksDialog);
+function showDecksDialog() {
+  editingDeckName = null;
+  deckEditorEmpty.hidden = false;
+  deckEditorForm.hidden = true;
+  renderDecksList();
+  decksDialog.showModal();
+}
+
+function closeDecksDialog() {
+  decksDialog.close();
+  editingDeckName = null;
+}
 
 function showNewDeckUI() {
-  editingDeckName = '';
+  editingDeckName = null;
   deckNameInput.value = '';
+  deckPresetsSearch.value = '';
   deckEditorEmpty.hidden = true;
   deckEditorForm.hidden = false;
   deckFeedback.textContent = '';
   deckFeedback.classList.remove('error');
-  deckPresetsSearch.value = '';
-  deckPresetsList.innerHTML = '';
 
-  // Show all presets unselected
-  presetsCache.forEach((preset) => {
-    const item = document.createElement('label');
-    item.className = 'deck-preset-item';
-
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = false;
-
-    const label = document.createElement('span');
-    label.textContent = preset.name || preset.id;
-
-    item.append(cb, label);
-    deckPresetsList.appendChild(item);
-  });
-
+  // Show all presets unchecked
+  renderDeckPresetsList([]);
   renderDecksList();
-}
-
-function openDecksDialog() {
-  renderDecksList();
-
-  if (activeDeckFilter) {
-    // User is currently filtered by a deck — show it selected for editing
-    selectDeckForEditing(activeDeckFilter);
-  } else {
-    // Not in a deck — show the new deck creation UI directly
-    showNewDeckUI();
-  }
-
-  if (typeof decksDialog.showModal === 'function') {
-    decksDialog.showModal();
-  } else {
-    decksDialog.setAttribute('open', '');
-  }
-}
-
-function closeDecksDialog() {
-  if (decksDialog.open) {
-    decksDialog.close();
-  }
 }
 
 function renderDecksList() {
   decksListEl.innerHTML = '';
+
   if (decksCache.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = 'No decks yet. Create one to get started.';
+    empty.textContent = 'No decks created yet.';
     decksListEl.appendChild(empty);
     return;
   }
 
   decksCache.forEach((deck) => {
     const item = document.createElement('div');
-    item.className = 'deck-list-item';
-    if (deck.name === editingDeckName) item.classList.add('selected');
+    item.className = 'deck-list-item' + (editingDeckName === deck.name ? ' selected' : '');
 
     const label = document.createElement('span');
     label.className = 'deck-list-label';
@@ -1096,7 +1014,7 @@ deckSaveButton.addEventListener('click', async () => {
   try {
     if (editingDeckName) {
       // Update existing deck
-      const response = await fetch(`/api/decks/${encodeURIComponent(editingDeckName)}`, {
+      const response = await fetch(`${apiBase}/api/decks/${encodeURIComponent(editingDeckName)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, preset_ids: presetIds }),
@@ -1107,7 +1025,7 @@ deckSaveButton.addEventListener('click', async () => {
       }
     } else {
       // Create new deck
-      const response = await fetch('/api/decks', {
+      const response = await fetch(`${apiBase}/api/decks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, preset_ids: presetIds }),
@@ -1121,8 +1039,10 @@ deckSaveButton.addEventListener('click', async () => {
 
     deckFeedback.textContent = 'Deck saved.';
     await loadDecks();
+    syncDeckSelectors();
     renderDecksList();
     selectDeckForEditing(name);
+    renderAllPanes();
   } catch (error) {
     deckFeedback.classList.add('error');
     deckFeedback.textContent = error.message || 'Save failed.';
@@ -1140,7 +1060,7 @@ deckDeleteButton.addEventListener('click', async () => {
   deckFeedback.textContent = 'Deleting...';
 
   try {
-    const response = await fetch(`/api/decks/${encodeURIComponent(editingDeckName)}`, { method: 'DELETE' });
+    const response = await fetch(`${apiBase}/api/decks/${encodeURIComponent(editingDeckName)}`, { method: 'DELETE' });
     if (!response.ok && response.status !== 204) {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.error || 'Failed to delete deck');
@@ -1148,18 +1068,21 @@ deckDeleteButton.addEventListener('click', async () => {
 
     deckFeedback.textContent = 'Deck deleted.';
 
-    // If the deleted deck was the active filter, clear it
-    if (activeDeckFilter === editingDeckName) {
-      activeDeckFilter = '';
-      deckSelector.value = '';
-      applyFiltersAndRender();
-    }
+    // Clear deck filter on all panes that had this deck selected
+    [leftPane, rightPane].forEach((pane) => {
+      if (pane && pane.activeDeckFilter === editingDeckName) {
+        pane.activeDeckFilter = '';
+        pane.deckSelector.value = '';
+      }
+    });
 
     await loadDecks();
+    syncDeckSelectors();
     deckEditorEmpty.hidden = true;
     deckEditorForm.hidden = true;
     editingDeckName = '';
     renderDecksList();
+    renderAllPanes();
   } catch (error) {
     deckFeedback.classList.add('error');
     deckFeedback.textContent = error.message || 'Delete failed.';
@@ -1168,6 +1091,72 @@ deckDeleteButton.addEventListener('click', async () => {
   }
 });
 
-startHeartbeat();
-loadPresets();
-loadDecks();
+// --------------------------------------------------------------------------
+// Global button handlers
+// --------------------------------------------------------------------------
+document.getElementById('create-button').addEventListener('click', openCreateEditor);
+document.getElementById('decks-button').addEventListener('click', showDecksDialog);
+document.getElementById('decks-close').addEventListener('click', closeDecksDialog);
+
+document.getElementById('shutdown-button').addEventListener('click', async () => {
+  if (!window.confirm('Shut down the PresetDock server?')) return;
+  try {
+    const resp = await fetch(`${apiBase}/api/shutdown`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || 'Shutdown failed');
+    }
+    setStatus('Server shutting down...');
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+});
+
+// View toggle button
+document.getElementById('view-toggle').addEventListener('click', () => {
+  setViewMode(viewMode === 'single' ? 'dual' : 'single');
+});
+
+// --------------------------------------------------------------------------
+// Close suggestions when clicking outside
+// --------------------------------------------------------------------------
+document.addEventListener('click', (e) => {
+  [leftPane, rightPane].forEach((pane) => {
+    if (!pane) return;
+    if (!pane.el.contains(e.target)) {
+      hideSuggestions(pane);
+    }
+  });
+});
+
+// --------------------------------------------------------------------------
+// Initialization
+// --------------------------------------------------------------------------
+async function init() {
+  // Create pane states
+  leftPane = createPaneState(document.getElementById('pane-left'));
+  rightPane = createPaneState(document.getElementById('pane-right'));
+
+  // Wire events for both panes
+  wirePaneEvents(leftPane);
+  wirePaneEvents(rightPane);
+
+  // Load data
+  await loadPresets();
+  await loadDecks();
+  await loadFavourites();
+
+  // Sync deck selectors
+  syncDeckSelectors();
+
+  // Initial render
+  renderAllPanes();
+
+  // Start heartbeat
+  startHeartbeat();
+
+  // Load server info if element exists
+  loadServerInfo();
+}
+
+init();

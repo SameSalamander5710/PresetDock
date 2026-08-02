@@ -19,27 +19,66 @@
 
       <section class="content">
         <div id="status" class="status" role="status" aria-live="polite">Loading presets...</div>
-        <div class="search-bar" role="search">
-          <div class="search-input-wrap">
-            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input id="search-input" type="search" placeholder="Search presets by name, tag, or engine..." autocomplete="off" />
-            <button id="search-clear" type="button" class="search-clear" aria-label="Clear search" hidden>&times;</button>
+        <div class="global-toolbar">
+          <div class="global-toolbar-left">
+            <button id="view-toggle" type="button" class="secondary-button" title="Toggle single/dual view">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+              <span>Dual View</span>
+            </button>
           </div>
-          <div id="search-suggestions" class="search-suggestions" role="listbox"></div>
-          <div id="filter-chips" class="filter-chips"></div>
-        </div>
-        <div class="toolbar">
-          <span id="filter-count" class="filter-count"></span>
-          <div class="toolbar-actions">
-            <select id="deck-selector" class="deck-selector" title="Filter by deck">
-              <option value="">All presets</option>
-            </select>
+          <div class="global-toolbar-right">
             <button id="create-button" type="button" class="secondary-button">Create</button>
             <button id="decks-button" type="button" class="secondary-button" title="Manage decks">🗂 Decks</button>
             <button id="shutdown-button" type="button" class="subtle-button" title="Stop the PresetDock server">Shut down</button>
           </div>
         </div>
-        <div id="presets" class="grid" aria-live="polite"></div>
+
+        <!-- Split-view container -->
+        <div id="split-container" class="split-container single-mode">
+          <!-- Left pane -->
+          <div id="pane-left" class="pane">
+            <div class="pane-search-bar" role="search">
+              <div class="search-input-wrap">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input class="pane-search-input" type="search" placeholder="Search presets by name, tag, or engine..." autocomplete="off" />
+                <button class="pane-search-clear" type="button" aria-label="Clear search" hidden>&times;</button>
+              </div>
+              <div class="pane-search-suggestions" role="listbox"></div>
+              <div class="pane-filter-chips"></div>
+            </div>
+            <div class="pane-toolbar">
+              <span class="pane-filter-count"></span>
+              <div class="pane-toolbar-actions">
+                <select class="pane-deck-selector" title="Filter by deck">
+                  <option value="">All presets</option>
+                </select>
+              </div>
+            </div>
+            <div class="pane-presets grid" aria-live="polite"></div>
+          </div>
+
+          <!-- Right pane (hidden in single mode) -->
+          <div id="pane-right" class="pane" hidden>
+            <div class="pane-search-bar" role="search">
+              <div class="search-input-wrap">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input class="pane-search-input" type="search" placeholder="Search presets by name, tag, or engine..." autocomplete="off" />
+                <button class="pane-search-clear" type="button" aria-label="Clear search" hidden>&times;</button>
+              </div>
+              <div class="pane-search-suggestions" role="listbox"></div>
+              <div class="pane-filter-chips"></div>
+            </div>
+            <div class="pane-toolbar">
+              <span class="pane-filter-count"></span>
+              <div class="pane-toolbar-actions">
+                <select class="pane-deck-selector" title="Filter by deck">
+                  <option value="">All presets</option>
+                </select>
+              </div>
+            </div>
+            <div class="pane-presets grid" aria-live="polite"></div>
+          </div>
+        </div>
       </section>
     </main>
 
