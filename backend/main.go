@@ -39,6 +39,16 @@ type Preset struct {
 	Command     string   `json:"command"`
 }
 
+type CreatePresetRequest struct {
+	Name           string   `json:"name"`
+	Engine         string   `json:"engine,omitempty"`
+	Model          string   `json:"model"`
+	Tags           []string `json:"tags"`
+	Description    string   `json:"description"`
+	Command        string   `json:"command"`
+	SourcePresetID string   `json:"source_preset_id,omitempty"`
+}
+
 type PresetView struct {
 	ID string `json:"id"`
 	Preset
@@ -124,16 +134,30 @@ func main() {
 
 			writeJSON(w, http.StatusOK, presets)
 		case http.MethodPost:
-			var preset Preset
-			if err := json.NewDecoder(r.Body).Decode(&preset); err != nil {
+			var req CreatePresetRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, "invalid preset JSON")
 				return
+			}
+
+			preset := Preset{
+				Name:        req.Name,
+				Engine:      req.Engine,
+				Model:       req.Model,
+				Tags:        req.Tags,
+				Description: req.Description,
+				Command:     req.Command,
 			}
 
 			savedPreset, err := savePreset(presetsDir, "", preset, false)
 			if err != nil {
 				httpError(w, http.StatusBadRequest, err.Error())
 				return
+			}
+
+			// If this is a duplicate (source_preset_id provided), propagate deck and favourite membership
+			if req.SourcePresetID != "" {
+				propagatePresetMembership(presetsDir, req.SourcePresetID, savedPreset.ID)
 			}
 
 			writeJSON(w, http.StatusCreated, savedPreset)
@@ -842,6 +866,67 @@ func httpError(w http.ResponseWriter, status int, message string) {
 func methodNotAllowed(w http.ResponseWriter, allowed string) {
 	w.Header().Set("Allow", allowed)
 	httpError(w, http.StatusMethodNotAllowed, "method not allowed")
+}
+
+// propagatePresetMembership adds the newPresetID to all decks and favourites
+// that the sourcePresetID belongs to when duplicating a preset.
+func propagatePresetMembership(presetsDir, sourcePresetID, newPresetID string) {
+	// Propagate to favourites
+	if sourcePresetID != newPresetID {
+		favs, err := loadFavourites(presetsDir)
+		if err == nil {
+			isFav := false
+			for _, id := range favs {
+				if id == sourcePresetID {
+					isFav = true
+					break
+				}
+			}
+			if isFav {
+				alreadyFav := false
+				for _, id := range favs {
+					if id == newPresetID {
+						alreadyFav = true
+						break
+					}
+				}
+				if !alreadyFav {
+					favs = append(favs, newPresetID)
+					_ = saveFavourites(presetsDir, favs)
+				}
+			}
+		}
+	}
+
+	// Propagate to decks
+	if sourcePresetID != newPresetID {
+		decks, err := loadDecks(presetsDir)
+		if err == nil {
+			modified := false
+			for i, deck := range decks {
+				for _, id := range deck.PresetIDs {
+					if id == sourcePresetID {
+						alreadyThere := false
+						for _, id2 := range deck.PresetIDs {
+							if id2 == newPresetID {
+								alreadyThere = true
+								break
+							}
+						}
+						if !alreadyThere {
+							deck.PresetIDs = append(deck.PresetIDs, newPresetID)
+							decks[i] = deck
+							modified = true
+						}
+						break
+					}
+				}
+			}
+			if modified {
+				_ = saveDecks(presetsDir, decks)
+			}
+		}
+	}
 }
 
 func noCache(next http.Handler) http.Handler {

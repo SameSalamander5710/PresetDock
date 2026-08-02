@@ -499,6 +499,8 @@ function openDuplicateEditor(preset) {
   // Clear activePresetId so it creates a NEW preset, not edits the existing one
   activePresetId = '';
   selectedEngine = preset.engine || '';
+  // Store the source preset ID so the backend can propagate deck/favourite membership
+  window._duplicateSourcePresetId = preset.id;
 
   dialogTitle.textContent = `Duplicate ${preset.name || preset.id}`;
   dialogSubtitle.textContent = 'Modify the fields and save as a new preset.';
@@ -853,6 +855,12 @@ editorForm.addEventListener('submit', async (event) => {
 
   if (!payload.engine) {
     payload.engine = selectedEngine || 'unknown';
+  }
+
+  // Include source_preset_id when duplicating
+  if (window._duplicateSourcePresetId) {
+    payload.source_preset_id = window._duplicateSourcePresetId;
+    window._duplicateSourcePresetId = null;
   }
 
   const isEditing = Boolean(activePresetId);
