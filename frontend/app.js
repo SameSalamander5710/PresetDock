@@ -926,11 +926,45 @@ decksButton.addEventListener('click', () => {
 
 decksCloseButton.addEventListener('click', closeDecksDialog);
 
+function showNewDeckUI() {
+  editingDeckName = '';
+  deckNameInput.value = '';
+  deckEditorEmpty.hidden = true;
+  deckEditorForm.hidden = false;
+  deckFeedback.textContent = '';
+  deckFeedback.classList.remove('error');
+  deckPresetsSearch.value = '';
+  deckPresetsList.innerHTML = '';
+
+  // Show all presets unselected
+  presetsCache.forEach((preset) => {
+    const item = document.createElement('label');
+    item.className = 'deck-preset-item';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = false;
+
+    const label = document.createElement('span');
+    label.textContent = preset.name || preset.id;
+
+    item.append(cb, label);
+    deckPresetsList.appendChild(item);
+  });
+
+  renderDecksList();
+}
+
 function openDecksDialog() {
   renderDecksList();
-  deckEditorEmpty.hidden = false;
-  deckEditorForm.hidden = true;
-  editingDeckName = '';
+
+  if (activeDeckFilter) {
+    // User is currently filtered by a deck — show it selected for editing
+    selectDeckForEditing(activeDeckFilter);
+  } else {
+    // Not in a deck — show the new deck creation UI directly
+    showNewDeckUI();
+  }
 
   if (typeof decksDialog.showModal === 'function') {
     decksDialog.showModal();
@@ -1032,32 +1066,7 @@ deckPresetsSearch.addEventListener('input', () => {
 });
 
 deckNewButton.addEventListener('click', () => {
-  editingDeckName = '';
-  deckNameInput.value = '';
-  deckEditorEmpty.hidden = true;
-  deckEditorForm.hidden = false;
-  deckFeedback.textContent = '';
-  deckFeedback.classList.remove('error');
-  deckPresetsSearch.value = '';
-  deckPresetsList.innerHTML = '';
-
-  // Show all presets unselected
-  presetsCache.forEach((preset) => {
-    const item = document.createElement('label');
-    item.className = 'deck-preset-item';
-
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = false;
-
-    const label = document.createElement('span');
-    label.textContent = preset.name || preset.id;
-
-    item.append(cb, label);
-    deckPresetsList.appendChild(item);
-  });
-
-  renderDecksList();
+  showNewDeckUI();
 });
 
 deckSaveButton.addEventListener('click', async () => {
