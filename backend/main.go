@@ -13,11 +13,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"presetdock/backend/internal/decks"
+	"presetdock/backend/internal/favourites"
+	"presetdock/backend/internal/presets"
 )
 
 const (
@@ -29,36 +32,6 @@ const (
 
 //go:embed frontend/*
 var embeddedFrontend embed.FS
-
-type Preset struct {
-	Name        string   `json:"name"`
-	Engine      string   `json:"engine,omitempty"`
-	Model       string   `json:"model"`
-	Tags        []string `json:"tags"`
-	Description string   `json:"description"`
-	Command     string   `json:"command"`
-}
-
-type CreatePresetRequest struct {
-	Name           string   `json:"name"`
-	Engine         string   `json:"engine,omitempty"`
-	Model          string   `json:"model"`
-	Tags           []string `json:"tags"`
-	Description    string   `json:"description"`
-	Command        string   `json:"command"`
-	SourcePresetID string   `json:"source_preset_id,omitempty"`
-}
-
-type PresetView struct {
-	ID string `json:"id"`
-	Preset
-	IsFavourite bool `json:"is_favourite"`
-}
-
-type Deck struct {
-	Name      string   `json:"name"`
-	PresetIDs []string `json:"preset_ids"`
-}
 
 type heartbeatState struct {
 	mu       sync.Mutex
@@ -89,7 +62,7 @@ func main() {
 	}
 
 	presetsDir := resolvePresetsDir(exeDir)
-	if err := ensurePresetsDir(presetsDir); err != nil {
+	if err := presets.EnsureDir(presetsDir); err != nil {
 		log.Fatal(err)
 	}
 
@@ -126,21 +99,21 @@ func main() {
 	mux.Handle("/api/presets", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			presets, err := loadPresets(presetsDir)
+			presetList, err := presets.Load(presetsDir)
 			if err != nil {
 				httpError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 
-			writeJSON(w, http.StatusOK, presets)
+			writeJSON(w, http.StatusOK, presetList)
 		case http.MethodPost:
-			var req CreatePresetRequest
+			var req presets.CreatePresetRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, "invalid preset JSON")
 				return
 			}
 
-			preset := Preset{
+			preset := presets.Preset{
 				Name:        req.Name,
 				Engine:      req.Engine,
 				Model:       req.Model,
@@ -149,7 +122,7 @@ func main() {
 				Command:     req.Command,
 			}
 
-			savedPreset, err := savePreset(presetsDir, "", preset, false)
+			savedPreset, err := presets.Save(presetsDir, "", preset, false)
 			if err != nil {
 				httpError(w, http.StatusBadRequest, err.Error())
 				return
@@ -174,13 +147,13 @@ func main() {
 
 		switch r.Method {
 		case http.MethodPut:
-			var preset Preset
+			var preset presets.Preset
 			if err := json.NewDecoder(r.Body).Decode(&preset); err != nil {
 				httpError(w, http.StatusBadRequest, "invalid preset JSON")
 				return
 			}
 
-			savedPreset, err := savePreset(presetsDir, id, preset, true)
+			savedPreset, err := presets.Save(presetsDir, id, preset, true)
 			if err != nil {
 				httpError(w, http.StatusBadRequest, err.Error())
 				return
@@ -188,7 +161,7 @@ func main() {
 
 			writeJSON(w, http.StatusOK, savedPreset)
 		case http.MethodDelete:
-			if err := deletePreset(presetsDir, id); err != nil {
+			if err := presets.Delete(presetsDir, id); err != nil {
 				if errors.Is(err, os.ErrNotExist) {
 					http.NotFound(w, r)
 					return
@@ -206,7 +179,7 @@ func main() {
 	mux.Handle("/api/favourites", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			favs, err := loadFavourites(presetsDir)
+			favs, err := favourites.Load(presetsDir)
 			if err != nil {
 				httpError(w, http.StatusInternalServerError, err.Error())
 				return
@@ -224,7 +197,7 @@ func main() {
 				httpError(w, http.StatusBadRequest, "preset_id is required")
 				return
 			}
-			favs, err := loadFavourites(presetsDir)
+			favs, err := favourites.Load(presetsDir)
 			if err != nil {
 				httpError(w, http.StatusInternalServerError, err.Error())
 				return
@@ -236,7 +209,7 @@ func main() {
 				}
 			}
 			favs = append(favs, payload.PresetID)
-			if err := saveFavourites(presetsDir, favs); err != nil {
+			if err := favourites.Save(presetsDir, favs); err != nil {
 				httpError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
@@ -257,7 +230,7 @@ func main() {
 			return
 		}
 
-		favs, err := loadFavourites(presetsDir)
+		favs, err := favourites.Load(presetsDir)
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -277,7 +250,7 @@ func main() {
 			return
 		}
 
-		if err := saveFavourites(presetsDir, newFavs); err != nil {
+		if err := favourites.Save(presetsDir, newFavs); err != nil {
 			httpError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -289,14 +262,14 @@ func main() {
 	mux.Handle("/api/decks", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			decks, err := loadDecks(presetsDir)
+			decksList, err := decks.Load(presetsDir)
 			if err != nil {
 				httpError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			writeJSON(w, http.StatusOK, decks)
+			writeJSON(w, http.StatusOK, decksList)
 		case http.MethodPost:
-			var deck Deck
+			var deck decks.Deck
 			if err := json.NewDecoder(r.Body).Decode(&deck); err != nil {
 				httpError(w, http.StatusBadRequest, "invalid JSON")
 				return
@@ -305,12 +278,12 @@ func main() {
 				httpError(w, http.StatusBadRequest, "deck name is required")
 				return
 			}
-			decks, err := loadDecks(presetsDir)
+			decksList, err := decks.Load(presetsDir)
 			if err != nil {
 				httpError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			for _, d := range decks {
+			for _, d := range decksList {
 				if strings.EqualFold(d.Name, deck.Name) {
 					httpError(w, http.StatusBadRequest, "deck with that name already exists")
 					return
@@ -319,8 +292,8 @@ func main() {
 			if deck.PresetIDs == nil {
 				deck.PresetIDs = []string{}
 			}
-			decks = append(decks, deck)
-			if err := saveDecks(presetsDir, decks); err != nil {
+			decksList = append(decksList, deck)
+			if err := decks.Save(presetsDir, decksList); err != nil {
 				httpError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
@@ -336,14 +309,14 @@ func main() {
 			return
 		}
 
-		decks, err := loadDecks(presetsDir)
+		decksList, err := decks.Load(presetsDir)
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
 		deckIdx := -1
-		for i, d := range decks {
+		for i, d := range decksList {
 			if strings.EqualFold(d.Name, name) {
 				deckIdx = i
 				break
@@ -356,7 +329,7 @@ func main() {
 
 		switch r.Method {
 		case http.MethodPut:
-			var updated Deck
+			var updated decks.Deck
 			if err := json.NewDecoder(r.Body).Decode(&updated); err != nil {
 				httpError(w, http.StatusBadRequest, "invalid JSON")
 				return
@@ -365,7 +338,7 @@ func main() {
 				httpError(w, http.StatusBadRequest, "deck name is required")
 				return
 			}
-			for i, d := range decks {
+			for i, d := range decksList {
 				if i != deckIdx && strings.EqualFold(d.Name, updated.Name) {
 					httpError(w, http.StatusBadRequest, "deck with that name already exists")
 					return
@@ -374,15 +347,15 @@ func main() {
 			if updated.PresetIDs == nil {
 				updated.PresetIDs = []string{}
 			}
-			decks[deckIdx] = updated
-			if err := saveDecks(presetsDir, decks); err != nil {
+			decksList[deckIdx] = updated
+			if err := decks.Save(presetsDir, decksList); err != nil {
 				httpError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 			writeJSON(w, http.StatusOK, updated)
 		case http.MethodDelete:
-			decks = append(decks[:deckIdx], decks[deckIdx+1:]...)
-			if err := saveDecks(presetsDir, decks); err != nil {
+			decksList = append(decksList[:deckIdx], decksList[deckIdx+1:]...)
+			if err := decks.Save(presetsDir, decksList); err != nil {
 				httpError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
@@ -437,7 +410,7 @@ func main() {
 			return
 		}
 
-		preset, err := loadPresetByID(presetsDir, id)
+		preset, err := presets.LoadByID(presetsDir, id)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				http.NotFound(w, r)
@@ -557,198 +530,6 @@ func pathExists(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-func ensurePresetsDir(presetsDir string) error {
-	if err := os.MkdirAll(presetsDir, 0o755); err != nil {
-		return err
-	}
-
-	examplePath := filepath.Join(presetsDir, "Example.json")
-	if _, err := os.Stat(examplePath); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-
-	example := Preset{
-		Name:        "Gemma 4 E4B - Q4",
-		Engine:      "llama-server",
-		Model:       "unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL",
-		Tags:        []string{"gemma", "E4B", "QAT", "Q4"},
-		Description: "Example preset",
-		Command:     "llama-server -hf unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL --spec-type draft-mtp --spec-draft-n-max 2 -fit on -ngl 999 --flash-attn on -c 8192 --temp 1.0 --top-p 0.95 --top-k 64 --mlock --host 127.0.0.1 --port 8080",
-	}
-
-	data, err := json.MarshalIndent(example, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	data = append(data, '\n')
-	return os.WriteFile(examplePath, data, 0o644)
-}
-
-func savePreset(presetsDir string, targetID string, preset Preset, overwrite bool) (PresetView, error) {
-	if targetID == "" {
-		targetID = slugifyPresetID(preset.Name)
-	}
-	if err := validatePresetID(targetID); err != nil {
-		return PresetView{}, err
-	}
-	if err := validatePreset(preset); err != nil {
-		return PresetView{}, err
-	}
-
-	targetPath := filepath.Join(presetsDir, targetID+".json")
-	if !overwrite {
-		if _, err := os.Stat(targetPath); err == nil {
-			return PresetView{}, fmt.Errorf("preset %s already exists", targetID)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return PresetView{}, err
-		}
-	}
-
-	data, err := json.MarshalIndent(preset, "", "  ")
-	if err != nil {
-		return PresetView{}, err
-	}
-	data = append(data, '\n')
-
-	if err := os.WriteFile(targetPath, data, 0o644); err != nil {
-		return PresetView{}, err
-	}
-
-	return PresetView{ID: targetID, Preset: preset}, nil
-}
-
-func loadPresets(presetsDir string) ([]PresetView, error) {
-	entries, err := os.ReadDir(presetsDir)
-	if err != nil {
-		return nil, err
-	}
-
-	// Load favourites set
-	favSet, _ := loadFavouritesSet(presetsDir)
-
-	presets := make([]PresetView, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
-			continue
-		}
-
-		// Skip favourites.json and decks.json
-		baseName := strings.TrimSuffix(strings.ToLower(entry.Name()), ".json")
-		if baseName == "favourites" || baseName == "decks" {
-			continue
-		}
-
-		preset, err := readPreset(filepath.Join(presetsDir, entry.Name()))
-		if err != nil {
-			log.Printf("skipping preset %s: %v", entry.Name(), err)
-			continue
-		}
-
-		presetID := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		pv := PresetView{
-			ID:          presetID,
-			Preset:      preset,
-			IsFavourite: favSet[presetID],
-		}
-		presets = append(presets, pv)
-	}
-
-	// Sort: favourites first, then alphabetically by name
-	sort.Slice(presets, func(i, j int) bool {
-		if presets[i].IsFavourite != presets[j].IsFavourite {
-			return presets[i].IsFavourite
-		}
-		return strings.ToLower(presets[i].Name) < strings.ToLower(presets[j].Name)
-	})
-
-	return presets, nil
-}
-
-func loadPresetByID(presetsDir, id string) (Preset, error) {
-	presetPath := filepath.Join(presetsDir, id+".json")
-	return readPreset(presetPath)
-}
-
-func deletePreset(presetsDir, id string) error {
-	if err := validatePresetID(id); err != nil {
-		return err
-	}
-	return os.Remove(filepath.Join(presetsDir, id+".json"))
-}
-
-func validatePreset(preset Preset) error {
-	if strings.TrimSpace(preset.Name) == "" {
-		return errors.New("preset name is required")
-	}
-	if strings.TrimSpace(preset.Command) == "" {
-		return errors.New("preset command is required")
-	}
-	return nil
-}
-
-func slugifyPresetID(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	if value == "" {
-		return ""
-	}
-
-	var builder strings.Builder
-	lastWasDash := false
-	for _, r := range value {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			builder.WriteRune(r)
-			lastWasDash = false
-		case r == '-' || r == '_' || r == '.':
-			if !lastWasDash {
-				builder.WriteRune('-')
-				lastWasDash = true
-			}
-		default:
-			if !lastWasDash {
-				builder.WriteRune('-')
-				lastWasDash = true
-			}
-		}
-	}
-
-	return strings.Trim(builder.String(), "-")
-}
-
-func validatePresetID(id string) error {
-	if strings.TrimSpace(id) == "" {
-		return errors.New("preset id is required")
-	}
-	for _, r := range id {
-		switch {
-		case r >= 'a' && r <= 'z':
-		case r >= 'A' && r <= 'Z':
-		case r >= '0' && r <= '9':
-		case r == '-' || r == '_' || r == '.':
-		default:
-			return errors.New("preset id may only contain letters, numbers, dots, underscores, and dashes")
-		}
-	}
-	return nil
-}
-
-func readPreset(path string) (Preset, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Preset{}, err
-	}
-
-	var preset Preset
-	if err := json.Unmarshal(data, &preset); err != nil {
-		return Preset{}, err
-	}
-
-	return preset, nil
-}
-
 func launchPresetCommand(name, commandLine string) (*exec.Cmd, error) {
 	trimmed := strings.TrimSpace(commandLine)
 	if trimmed == "" {
@@ -769,85 +550,6 @@ func launchPresetCommand(name, commandLine string) (*exec.Cmd, error) {
 		HideWindow:    true,
 	}
 	return command, nil
-}
-
-// --- Favourites ---
-
-func favouritesPath(presetsDir string) string {
-	return filepath.Join(presetsDir, "favourites.json")
-}
-
-func loadFavourites(presetsDir string) ([]string, error) {
-	path := favouritesPath(presetsDir)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return []string{}, nil
-		}
-		return nil, err
-	}
-	var favs []string
-	if err := json.Unmarshal(data, &favs); err != nil {
-		return nil, err
-	}
-	return favs, nil
-}
-
-func loadFavouritesSet(presetsDir string) (map[string]bool, error) {
-	favs, err := loadFavourites(presetsDir)
-	if err != nil {
-		return nil, err
-	}
-	set := make(map[string]bool, len(favs))
-	for _, id := range favs {
-		set[id] = true
-	}
-	return set, nil
-}
-
-func saveFavourites(presetsDir string, favs []string) error {
-	path := favouritesPath(presetsDir)
-	data, err := json.MarshalIndent(favs, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o644)
-}
-
-// --- Decks ---
-
-func decksPath(presetsDir string) string {
-	return filepath.Join(presetsDir, "decks.json")
-}
-
-func loadDecks(presetsDir string) ([]Deck, error) {
-	path := decksPath(presetsDir)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return []Deck{}, nil
-		}
-		return nil, err
-	}
-	var decks []Deck
-	if err := json.Unmarshal(data, &decks); err != nil {
-		return nil, err
-	}
-	sort.Slice(decks, func(i, j int) bool {
-		return strings.ToLower(decks[i].Name) < strings.ToLower(decks[j].Name)
-	})
-	return decks, nil
-}
-
-func saveDecks(presetsDir string, decks []Deck) error {
-	path := decksPath(presetsDir)
-	data, err := json.MarshalIndent(decks, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o644)
 }
 
 func openBrowser(url string) error {
@@ -876,7 +578,7 @@ func methodNotAllowed(w http.ResponseWriter, allowed string) {
 func propagatePresetMembership(presetsDir, sourcePresetID, newPresetID string) {
 	// Propagate to favourites
 	if sourcePresetID != newPresetID {
-		favs, err := loadFavourites(presetsDir)
+		favs, err := favourites.Load(presetsDir)
 		if err == nil {
 			isFav := false
 			for _, id := range favs {
@@ -895,7 +597,7 @@ func propagatePresetMembership(presetsDir, sourcePresetID, newPresetID string) {
 				}
 				if !alreadyFav {
 					favs = append(favs, newPresetID)
-					_ = saveFavourites(presetsDir, favs)
+					_ = favourites.Save(presetsDir, favs)
 				}
 			}
 		}
@@ -903,10 +605,10 @@ func propagatePresetMembership(presetsDir, sourcePresetID, newPresetID string) {
 
 	// Propagate to decks
 	if sourcePresetID != newPresetID {
-		decks, err := loadDecks(presetsDir)
+		dk, err := decks.Load(presetsDir)
 		if err == nil {
 			modified := false
-			for i, deck := range decks {
+			for i, deck := range dk {
 				for _, id := range deck.PresetIDs {
 					if id == sourcePresetID {
 						alreadyThere := false
@@ -918,7 +620,7 @@ func propagatePresetMembership(presetsDir, sourcePresetID, newPresetID string) {
 						}
 						if !alreadyThere {
 							deck.PresetIDs = append(deck.PresetIDs, newPresetID)
-							decks[i] = deck
+							dk[i] = deck
 							modified = true
 						}
 						break
@@ -926,7 +628,7 @@ func propagatePresetMembership(presetsDir, sourcePresetID, newPresetID string) {
 				}
 			}
 			if modified {
-				_ = saveDecks(presetsDir, decks)
+				_ = decks.Save(presetsDir, dk)
 			}
 		}
 	}
