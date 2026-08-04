@@ -27,26 +27,36 @@ The repo should stay explicit and modular, not framework-like.
 
 ### Composition Root
 
-`backend/main.go` should only wire dependencies and start the process. It owns:
-
-1. Path resolution.
-2. Embedded frontend setup.
-3. HTTP server startup and shutdown.
-4. Browser launch.
-5. Runtime lifecycle wiring.
+`backend/main.go` is a thin wiring layer. It resolves paths, creates the embedded
+frontend filesystem, constructs dependencies, registers routes, starts the HTTP
+server, and coordinates shutdown. It should not contain route handlers, HTTP
+logic, or lifecycle state.
 
 ### API Layer
 
-`backend/internal/api/` should own:
+`backend/internal/api/` owns the HTTP boundary.
 
-1. Request decoding and response encoding.
-2. Route registration.
-3. Status codes and validation at the HTTP boundary.
-4. Calling storage, runtime, and launcher helpers.
+- `handler.go` — `Handler` struct and `NewHandler()` constructor.
+- `routes.go` — `Register()` mounts all routes on `*http.ServeMux` and attaches
+  the static frontend fallback with cache-busting headers.
+- `responses.go` — `writeJSON()`, `httpError()`, and `methodNotAllowed()` helpers.
+- `presets_handler.go` — `GET /api/presets`, `GET /api/presets/:id`,
+  `POST /api/presets`, `PATCH /api/presets/:id`, `DELETE /api/presets/:id`.
+- `favourites_handler.go` — `GET /api/favourites`,
+  `POST /api/favourites/:presetId`, `DELETE /api/favourites/:presetId`.
+- `decks_handler.go` — `GET /api/decks`, `GET /api/decks/:name`,
+  `POST /api/decks`, `PATCH /api/decks/:name`, `DELETE /api/decks/:name`,
+  `POST /api/decks/:name/presets/:presetId`, `DELETE /api/decks/:name/presets/:presetId`.
+- `run_handler.go` — `POST /api/run` (direct command), `POST /api/run/:id` (preset).
+- `runtime_handler.go` — `POST /api/heartbeat`, `POST /api/shutdown`.
+
+The API layer depends on storage helpers, the `Launcher` interface, the
+`Heartbeat` state, and a shutdown callback. It does not own process lifecycle.
 
 ### Domain and Storage Layer
 
-`backend/internal/presets/`, `backend/internal/favourites/`, and `backend/internal/decks/` should own:
+`backend/internal/presets/`, `backend/internal/favourites/`, and
+`backend/internal/decks/` should own:
 
 1. Reading and writing JSON files.
 2. Validation for their own data.
@@ -60,17 +70,21 @@ The repo should stay explicit and modular, not framework-like.
 1. `launcher.go` defines the `Launcher` interface (`Prepare(CommandPayload) (*exec.Cmd, error)`) and the `CommandPayload` struct.
 2. `windows.go` provides `WindowsCmdLauncher`, the default implementation using `cmd.exe /C start`.
 3. `windows_test.go` validates empty-command rejection, title sanitization, default title fallback, and `SysProcAttr` flags.
-4. HTTP handlers in `main.go` depend on the `Launcher` interface, not the concrete Windows implementation.
+4. HTTP handlers depend on the `Launcher` interface, not the concrete Windows implementation.
 5. Future launchers (e.g., PowerShell, WSL) are added as new struct implementations without touching HTTP handlers.
 
 ### Runtime Layer
 
-`backend/internal/runtime/` should own process lifecycle helpers.
+`backend/internal/runtime/` owns process lifecycle helpers.
 
-1. Heartbeat tracking.
-2. Stale shutdown.
-3. Already-running detection.
-4. Browser launch coordination.
+- `heartbeat.go` — `Heartbeat` state with `LastActive()`, `Touch()`, and
+  `IsStale(bool)` methods.
+- `runner.go` — `Runner` struct that wraps `*http.Server`, exposes
+  `MonitorHeartbeat()` (background goroutine) and `Shutdown()` (graceful
+  server shutdown).
+- `browser.go` — `OpenBrowser()` launches the default browser via `cmd.exe`.
+- `already_running.go` — `LaunchIfAlreadyRunning()` redirects to the existing
+  instance when port 8765 is already in use.
 
 ## Frontend Boundaries
 
