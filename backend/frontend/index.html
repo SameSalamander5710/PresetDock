@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PresetDock</title>
     <link rel="stylesheet" href="/styles.css" />
+    <!-- Load modules in dependency order -->
+    <script src="/state.js" defer></script>
+    <script src="/dom.js" defer></script>
+    <script src="/api" defer></script>
+    <script src="/heartbeat.js" defer></script>
+    <script src="/panes.js" defer></script>
+    <script src="/dialogs.js" defer></script>
+    <script src="/actions.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>

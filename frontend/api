@@ -1,0 +1,228 @@
+// --------------------------------------------------------------------------
+// API helpers — fetch wrappers and endpoint helpers
+// --------------------------------------------------------------------------
+
+const apiBase = '';
+
+// --------------------------------------------------------------------------
+// Server info
+// --------------------------------------------------------------------------
+
+async function loadServerInfo() {
+  try {
+    const res = await fetch(`${apiBase}/api/info`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const el = document.getElementById('server-info');
+    if (el && data) {
+      el.textContent = `Server running on port ${data.port} | OS: ${data.os}`;
+    }
+  } catch {
+    // ignore
+  }
+}
+
+// --------------------------------------------------------------------------
+// Data loading
+// --------------------------------------------------------------------------
+
+async function loadPresets() {
+  try {
+    const res = await fetch(`${apiBase}/api/presets`);
+    if (!res.ok) throw new Error('Failed to load presets');
+    const data = await res.json();
+    setPresets(data);
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function loadDecks() {
+  try {
+    const res = await fetch(`${apiBase}/api/decks`);
+    if (!res.ok) throw new Error('Failed to load decks');
+    const data = await res.json();
+    setDecks(data);
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+async function loadFavourites() {
+  try {
+    const res = await fetch(`${apiBase}/api/favourites`);
+    if (!res.ok) throw new Error('Failed to load favourites');
+    const data = await res.json();
+    const favs = data.favourites || data;
+    if (Array.isArray(data) && !Array.isArray(data.favourites)) {
+      setFavourites(data);
+    } else {
+      setFavourites(favs);
+    }
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+// --------------------------------------------------------------------------
+// Preset actions
+// --------------------------------------------------------------------------
+
+async function toggleFavourite(presetId, isFavourite) {
+  let resp;
+  if (isFavourite) {
+    resp = await fetch(`${apiBase}/api/favourites/${encodeURIComponent(presetId)}`, {
+      method: 'DELETE',
+    });
+  } else {
+    resp = await fetch(`${apiBase}/api/favourites`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preset_id: presetId }),
+    });
+  }
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || 'Favourite toggle failed');
+  }
+  return !isFavourite;
+}
+
+async function runPreset(presetId, presetName) {
+  const resp = await fetch(`${apiBase}/api/run/${encodeURIComponent(presetId)}`, {
+    method: 'POST',
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || 'Run failed');
+  }
+  setStatus(`Preset "${presetName || presetId}" launched.`);
+}
+
+async function duplicatePreset(preset) {
+  setStatus('Duplicating preset...');
+  const resp = await fetch(`${apiBase}/api/presets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: preset.name ? `${preset.name} (copy)` : `${preset.id} (copy)`,
+      engine: preset.engine || '',
+      model: preset.model || '',
+      tags: preset.tags ? preset.tags.slice() : [],
+      description: preset.description || '',
+      command: preset.command || '',
+      source_preset_id: preset.id,
+    }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || 'Duplicate failed');
+  }
+  const newPreset = await resp.json();
+  setStatus(`Preset duplicated as "${newPreset.name || newPreset.id}".`);
+  return newPreset;
+}
+
+async function deletePreset(presetId, presetName) {
+  setStatus('Deleting preset...');
+  const resp = await fetch(`${apiBase}/api/presets/${encodeURIComponent(presetId)}`, {
+    method: 'DELETE',
+  });
+  if (!resp.ok && resp.status !== 204) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || 'Delete failed');
+  }
+  setStatus('Preset deleted.');
+}
+
+async function savePreset(presetId, payload) {
+  const resp = await fetch(`${apiBase}/api/presets/${encodeURIComponent(presetId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || 'Save failed');
+  }
+  return resp.json().catch(() => ({}));
+}
+
+async function createPreset(payload) {
+  const resp = await fetch(`${apiBase}/api/presets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || 'Save failed');
+  }
+  return resp.json().catch(() => ({}));
+}
+
+// --------------------------------------------------------------------------
+// Deck actions
+// --------------------------------------------------------------------------
+
+async function saveDeck(deckName, name, presetIds) {
+  const response = await fetch(`${apiBase}/api/decks/${encodeURIComponent(deckName)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, preset_ids: presetIds }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update deck');
+  }
+}
+
+async function createDeckApi(name, presetIds) {
+  const response = await fetch(`${apiBase}/api/decks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, preset_ids: presetIds }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create deck');
+  }
+}
+
+async function deleteDeckApi(deckName) {
+  const response = await fetch(`${apiBase}/api/decks/${encodeURIComponent(deckName)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok && response.status !== 204) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to delete deck');
+  }
+}
+
+// --------------------------------------------------------------------------
+// Run command
+// --------------------------------------------------------------------------
+
+async function runCommand(name, command) {
+  const resp = await fetch(`${apiBase}/api/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name || 'PresetDock', command }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || 'Run failed');
+  }
+}
+
+// --------------------------------------------------------------------------
+// Shutdown
+// --------------------------------------------------------------------------
+
+async function shutdownServer() {
+  const resp = await fetch(`${apiBase}/api/shutdown`, { method: 'POST' });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || 'Shutdown failed');
+  }
+}

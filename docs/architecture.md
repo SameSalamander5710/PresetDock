@@ -89,38 +89,74 @@ The API layer depends on storage helpers, the `Launcher` interface, the
 ## Frontend Boundaries
 
 The shipped frontend lives in `backend/frontend/` and is embedded into the binary.
+Scripts are loaded in dependency order via `defer` in `index.html`.
+
+### Module Dependency Order
+
+```
+state.js  →  dom.js  →  api  →  heartbeat.js  →  panes.js  →  dialogs.js  →  actions.js  →  app.js
+```
 
 ### Bootstrap
 
-`backend/frontend/app.js` should initialize the page and compose the other frontend modules.
+`backend/frontend/app.js` is the thin bootstrap entry point. It validates required
+DOM nodes, creates pane states, wires events, composes callback factories from
+actions, loads initial data, triggers the first render, and starts the heartbeat.
+It contains no business logic, rendering, or API calls.
 
 ### Shared State
 
-`backend/frontend/state.js` should own shared arrays and mutation helpers.
-
-### API Helpers
-
-`backend/frontend/api.js` should own fetch wrappers and endpoint names.
-
-### Rendering
-
-`backend/frontend/panes.js` should own pane state and rendering.
-
-### Dialogs
-
-`backend/frontend/dialogs.js` should own editor and deck dialog logic.
-
-### Actions
-
-`backend/frontend/actions.js` should own button wiring and user actions.
-
-### Heartbeat
-
-`backend/frontend/heartbeat.js` should own the client-side liveness loop.
+`backend/frontend/state.js` owns all shared arrays (`presets`, `decks`,
+`favourites`) and their mutation helpers (`setPresets`, `setDecks`,
+`setFavourites`, `addPreset`, `updatePreset`, `removePreset`, `addDeck`,
+`updateDeck`, `removeDeck`, `addFavourite`, `removeFavourite`). It also owns
+the `setStatus()` helper for updating the status bar.
 
 ### DOM Helpers
 
-`backend/frontend/dom.js` should own safe DOM lookup and assertions.
+`backend/frontend/dom.js` owns safe DOM lookup (`getElement`, `assertElement`)
+and DOM creation helpers (`createSelectOption`). `assertElement` throws a
+descriptive error when a required node is missing, which fails fast during
+bootstrap instead of producing silent `null` errors later.
+
+### API Helpers
+
+`backend/frontend/api` (extensionless to avoid Go embed content-type issues)
+owns all `fetch` calls and endpoint helpers: `loadServerInfo`, `loadPresets`,
+`loadDecks`, `loadFavourites`, `toggleFavourite`, `runPreset`, `duplicatePreset`,
+`deletePreset`, `savePreset`, `createPreset`, `saveDeck`, `createDeckApi`,
+`deleteDeckApi`, `runCommand`, `shutdownServer`.
+
+### Heartbeat
+
+`backend/frontend/heartbeat.js` owns the client-side liveness loop.
+`startHeartbeat()` posts to `/api/heartbeat` every 5s. `stopHeartbeat()`
+cleans up the interval. `HEARTBEAT_INTERVAL` and `HEARTBEAT_TIMEOUT` are
+configurable constants.
+
+### Rendering
+
+`backend/frontend/panes.js` owns pane state, rendering, filtering, suggestions,
+and view mode. Key exports: `createPaneState()`, `wirePaneEvents()`,
+`renderAllPanes()`, `renderPane()`, `filterPresets()`, `buildSuggestions()`,
+`showSuggestions()`/`hideSuggestions()`, `syncDeckSelectors()`,
+`setViewModeUI()`, `openCreateEditor()`.
+
+### Dialogs
+
+`backend/frontend/dialogs.js` owns the preset editor dialog and decks management
+dialog. `wireDialogs()` connects all dialog buttons to callback functions.
+`openEditorForPreset()` pre-fills the editor. Deck helpers manage the deck
+list, editor form, and preset checkboxes.
+
+### Actions
+
+`backend/frontend/actions.js` owns user actions, button wiring, and orchestration.
+`createCardActions()` returns card-level callbacks (toggle favourite, run, edit,
+duplicate, delete). `createEditorCallbacks()` returns editor save/run callbacks.
+`createDeckCallbacks()` returns deck save/delete callbacks. `wireGlobalActions()`
+attaches global button handlers. `wireOutsideClick()` closes suggestions when
+clicking outside a pane.
 
 ## Source of Truth Rules
 
