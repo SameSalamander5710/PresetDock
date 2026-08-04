@@ -55,11 +55,13 @@ The repo should stay explicit and modular, not framework-like.
 
 ### Launcher Layer
 
-`backend/internal/launcher/` should own the command execution abstraction.
+`backend/internal/launcher/` owns the command execution abstraction.
 
-1. Define a launcher interface for running commands.
-2. Keep the default Windows `cmd.exe` implementation behind that interface.
-3. Add future launchers such as PowerShell without changing HTTP handlers.
+1. `launcher.go` defines the `Launcher` interface (`Prepare(CommandPayload) (*exec.Cmd, error)`) and the `CommandPayload` struct.
+2. `windows.go` provides `WindowsCmdLauncher`, the default implementation using `cmd.exe /C start`.
+3. `windows_test.go` validates empty-command rejection, title sanitization, default title fallback, and `SysProcAttr` flags.
+4. HTTP handlers in `main.go` depend on the `Launcher` interface, not the concrete Windows implementation.
+5. Future launchers (e.g., PowerShell, WSL) are added as new struct implementations without touching HTTP handlers.
 
 ### Runtime Layer
 

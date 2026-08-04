@@ -15,11 +15,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"presetdock/backend/internal/decks"
 	"presetdock/backend/internal/favourites"
+	"presetdock/backend/internal/launcher"
 	"presetdock/backend/internal/presets"
 )
 
@@ -27,7 +27,6 @@ const (
 	heartbeatInterval = 30 * time.Second
 	heartbeatTimeout  = 2 * time.Minute
 	shutdownTimeout   = 5 * time.Second
-	createNoWindow    = 0x08000000
 )
 
 //go:embed frontend/*
@@ -73,6 +72,8 @@ func main() {
 
 	heartbeat := newHeartbeatState()
 	var requestShutdown func()
+
+	cmdLauncher := &launcher.WindowsCmdLauncher{}
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/heartbeat", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -385,7 +386,10 @@ func main() {
 			return
 		}
 
-		command, err := launchPresetCommand(payload.Name, payload.Command)
+		command, err := cmdLauncher.Prepare(launcher.CommandPayload{
+			Title:   payload.Name,
+			Command: payload.Command,
+		})
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, fmt.Sprintf("failed to launch command: %v", err))
 			return
@@ -420,7 +424,10 @@ func main() {
 			return
 		}
 
-		command, err := launchPresetCommand(preset.Name, preset.Command)
+		command, err := cmdLauncher.Prepare(launcher.CommandPayload{
+			Title:   preset.Name,
+			Command: preset.Command,
+		})
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, fmt.Sprintf("failed to launch command: %v", err))
 			return
@@ -528,28 +535,6 @@ func resolvePresetsDir(exeDir string) string {
 func pathExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
-}
-
-func launchPresetCommand(name, commandLine string) (*exec.Cmd, error) {
-	trimmed := strings.TrimSpace(commandLine)
-	if trimmed == "" {
-		return nil, errors.New("preset command is empty")
-	}
-
-	title := strings.ReplaceAll(strings.TrimSpace(name), `"`, "'")
-	if title == "" {
-		title = "PresetDock"
-	}
-
-	rawCmdLine := fmt.Sprintf(`cmd /C start "%s" cmd /K %s`, title, trimmed)
-
-	command := exec.Command("cmd")
-	command.SysProcAttr = &syscall.SysProcAttr{
-		CmdLine:       rawCmdLine,
-		CreationFlags: createNoWindow,
-		HideWindow:    true,
-	}
-	return command, nil
 }
 
 func openBrowser(url string) error {
