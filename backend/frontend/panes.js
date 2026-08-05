@@ -23,10 +23,11 @@ function createPresetCard(preset, isFavourite, actions) {
   star.className = 'favourite-star' + (isFavourite ? ' active' : '');
   star.textContent = isFavourite ? '★' : '☆';
   star.title = isFavourite ? 'Remove from favourites' : 'Add to favourites';
-  star.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    try {
-      const newIsFav = await actions.onToggleFavourite(preset.id, isFavourite);
+   star.addEventListener('click', async (e) => {
+     e.stopPropagation();
+     try {
+       const currentIsFav = favouritesCache.includes(preset.id);
+       const newIsFav = await actions.onToggleFavourite(preset.id, currentIsFav);
       star.classList.toggle('active', newIsFav);
       star.textContent = newIsFav ? '★' : '☆';
       star.title = newIsFav ? 'Remove from favourites' : 'Add to favourites';
