@@ -161,8 +161,8 @@ clicking outside a pane.
 ## Source of Truth Rules
 
 1. `presets/` is the source of truth for user data.
-2. `backend/frontend/` is the source of truth for the shipped UI.
-3. The top-level `frontend/` directory is legacy and should be treated as a mirror until removed.
+2. `backend/frontend/` is the sole frontend directory, the source of truth for the shipped UI, and is embedded into the binary.
+3. `backend/internal/` is the sole backend package path and owns all Go domain logic.
 4. The preset JSON schema should stay stable unless a migration is explicitly planned.
 
 ## Extension Rules
