@@ -119,6 +119,13 @@ h1 {
 
 .split-container.dual-mode {
   flex-direction: row;
+  gap: 16px;
+}
+
+/* Vertical divider between panes in dual view */
+.split-container.dual-mode #pane-left {
+  border-right: 1px solid rgba(148, 163, 184, 0.12);
+  padding-right: 16px;
 }
 
 .split-container.dual-mode .pane {
@@ -760,6 +767,12 @@ button:disabled {
   /* Collapse dual mode to single column on narrow screens */
   .split-container.dual-mode {
     flex-direction: column;
+    gap: 20px;
+  }
+
+  .split-container.dual-mode #pane-left {
+    border-right: none;
+    padding-right: 0;
   }
 }
 
