@@ -231,6 +231,9 @@ function filterPresetsForPane(pane) {
 // Pane-scoped rendering
 // --------------------------------------------------------------------------
 function renderPane(pane, cardActions) {
+  // Fall back to global cardActionsRef when called from event handlers
+  // that don't have direct access to the cardActions object
+  const actions = cardActions || getCardActionsRef();
   const filtered = filterPresetsForPane(pane);
 
   // Clear and render preset cards
@@ -248,7 +251,7 @@ function renderPane(pane, cardActions) {
   } else {
     filtered.forEach((preset) => {
       const isFav = favouritesCache.includes(preset.id);
-      const card = createPresetCard(preset, isFav, cardActions);
+      const card = createPresetCard(preset, isFav, actions);
       pane.presetsContainer.appendChild(card);
     });
   }

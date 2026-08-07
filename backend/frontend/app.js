@@ -59,6 +59,7 @@ async function init() {
 
   // Build card action callbacks
   const cardActions = createCardActions(onRefresh);
+  setCardActionsRef(cardActions);
 
   // Wire dialogs with callbacks
   const editorCallbacks = createEditorCallbacks(onRefresh);

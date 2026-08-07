@@ -14,6 +14,9 @@ let viewMode = 'single'; // 'single' | 'dual'
 let leftPane = null;
 let rightPane = null;
 
+// Card actions reference (shared across pane renders)
+let cardActionsRef = null;
+
 // --------------------------------------------------------------------------
 // Mutation helpers
 // --------------------------------------------------------------------------
@@ -40,6 +43,14 @@ function setLeftPane(pane) {
 
 function setRightPane(pane) {
   rightPane = pane;
+}
+
+function setCardActionsRef(ref) {
+  cardActionsRef = ref;
+}
+
+function getCardActionsRef() {
+  return cardActionsRef;
 }
 
 // --------------------------------------------------------------------------
