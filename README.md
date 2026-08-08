@@ -8,16 +8,16 @@ PresetDock is a local-only Windows launcher and storage layer for llama.cpp comm
 It is designed to keep saved llama.cpp commands in plain JSON files, then expose them through a small browser UI so you can create, edit, run, and save code presets without copying commands in and out of a terminal.
 
 <p align="center">
-	<img src="docs/Screenshot.gif" alt="PresetDock UI" width="65%" />
+	<img src="docs/images/Screenshot.gif" alt="PresetDock UI" width="65%" />
 </p>
 
 This is not a general-purpose llama.cpp wrapper. PresetDock simply keeps your own llama.cpp command lines organized and launchable.
 
 Preset files live in `presets/` next to the executable, and the filename is the preset id. The browser UI is just a front end over those files.
 
-## Installation (_soon!_)
+## Installation
 
-- Simply download, extract and run the latest `PresetDock.exe` binary.
+- Simply download and run the latest `PresetDock.exe` binary.
 
 ## Run
 
