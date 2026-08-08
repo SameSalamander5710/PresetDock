@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
 	"log"
 	"net"
@@ -19,7 +20,16 @@ import (
 //go:embed frontend/*
 var embeddedFrontend embed.FS
 
+// version is set at build time via -ldflags "-X presetdock/backend.version=...".
+// It stays "dev" for local `go run`/`go build` with no ldflags.
+var version = "dev"
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Println("PresetDock", version)
+		return
+	}
+
 	exeDir, err := executableDir()
 	if err != nil {
 		log.Fatal(err)
