@@ -67,12 +67,14 @@ The API layer depends on storage helpers, the `Launcher` interface, the
 
 `backend/internal/launcher/` owns the command execution abstraction.
 
-1. `launcher.go` defines the `Launcher` interface (`Prepare(CommandPayload) (*exec.Cmd, func(), error)`) and the `CommandPayload` struct. The third return value is a cleanup callback that removes temporary artifacts after the command exits.
-2. `windows.go` provides `WindowsCmdLauncher`, the default implementation using `cmd.exe /C start /WAIT`. Commands are written to a temp batch file (`presetdock-*.bat`) so shell operators (`&&`, `|`, `^`) are parsed only once by the inner console window. The outer `cmd.exe` uses `start /WAIT` so it blocks until the spawned window closes, making `cmd.Wait()` a reliable signal for cleanup.
-3. `cleanup.go` provides `StartStaleScriptSweeper()`, a background goroutine that periodically deletes stale `presetdock-*.bat` files older than a configurable max age from the temp directory. This is a safety net for edge cases where the normal cleanup callback is not invoked.
-4. `windows_test.go` validates empty-command rejection, title sanitization, default title fallback, `SysProcAttr` flags, batch file creation/cleanup, and batch script content.
-5. HTTP handlers call `Prepare()`, then spawn a background goroutine that waits for the command to exit and invokes the cleanup callback. This preserves the fire-and-forget HTTP response pattern (returns `{"status": "started"}` immediately).
-6. Future launchers (e.g., PowerShell, WSL) are added as new struct implementations without touching HTTP handlers.
+1. `launcher.go` defines the `Launcher` interface (`Prepare(CommandPayload) (*exec.Cmd, func(), error)`) and the `CommandPayload` struct (fields: `Title`, `Command`, `Shell`). The third return value is a cleanup callback that removes temporary artifacts after the command exits.
+2. `cmd_launcher.go` provides `WindowsCmdLauncher`, the default implementation using `cmd.exe /C start /WAIT`. Commands are written to a temp batch file (`presetdock-*.bat`) so shell operators (`&&`, `|`, `^`) are parsed only once by the inner console window. The outer `cmd.exe` uses `start /WAIT` so it blocks until the spawned window closes, making `cmd.Wait()` a reliable signal for cleanup.
+3. `powershell_launcher.go` provides `PowerShellLauncher`, which launches commands via `powershell.exe -NoLogo -NoExit -Command`. The preset title is set via `$Host.UI.RawUI.WindowTitle` inside the PowerShell session. Uses `CREATE_NEW_CONSOLE` for a dedicated window.
+4. `dispatcher.go` provides `Dispatcher`, which implements `Launcher` and routes `Prepare()` calls to the correct launcher based on `CommandPayload.Shell` ("cmd" → `WindowsCmdLauncher`, "powershell" → `PowerShellLauncher`). Defaults to "cmd" for empty/unknown values.
+5. `cleanup.go` provides `StartStaleScriptSweeper()`, a background goroutine that periodically deletes stale `presetdock-*.bat` files older than a configurable max age from the temp directory. This is a safety net for edge cases where the normal cleanup callback is not invoked.
+6. `cmd_launcher_test.go` validates empty-command rejection, title sanitization, default title fallback, `SysProcAttr` flags, batch file creation/cleanup, and batch script content.
+7. HTTP handlers call `Prepare()`, then spawn a background goroutine that waits for the command to exit and invokes the cleanup callback. This preserves the fire-and-forget HTTP response pattern (returns `{"status": "started"}` immediately).
+8. Future launchers (e.g., WSL) are added as new struct implementations and registered in the dispatcher without touching HTTP handlers.
 
 ### Runtime Layer
 

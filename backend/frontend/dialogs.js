@@ -19,6 +19,7 @@ function dialogRefs() {
       presetTags: assertElement('preset-tags', 'dialogs'),
       presetDescription: assertElement('preset-description', 'dialogs'),
       presetCommand: assertElement('preset-command', 'dialogs'),
+      presetShell: assertElement('preset-shell', 'dialogs'),
       presetEditorFeedback: assertElement('preset-editor-feedback', 'dialogs'),
       editorSave: assertElement('editor-save', 'dialogs'),
       editorCancel: assertElement('editor-cancel', 'dialogs'),
@@ -57,6 +58,7 @@ function openEditorForPreset(preset) {
   r.presetTags.value = (preset.tags || []).join(', ');
   r.presetDescription.value = preset.description || '';
   r.presetCommand.value = preset.command || '';
+  r.presetShell.value = preset.shell || 'cmd';
   r.presetEditorFeedback.textContent = '';
   r.presetEditorFeedback.classList.remove('error');
   r.editorSave.textContent = 'Save changes';
@@ -74,6 +76,7 @@ function openCreateEditor() {
   r.presetTags.value = '';
   r.presetDescription.value = '';
   r.presetCommand.value = '';
+  r.presetShell.value = 'cmd';
   r.presetEditorFeedback.textContent = '';
   r.presetEditorFeedback.classList.remove('error');
   r.editorSave.textContent = 'Save preset';
@@ -224,6 +227,7 @@ function wireDialogs(onEditorSave, onEditorRun, onDeckSave, onDeckDelete) {
       tags,
       description: r.presetDescription.value.trim(),
       command: r.presetCommand.value.trim(),
+      shell: r.presetShell.value,
     };
 
     if (!payload.name && !payload.command) {

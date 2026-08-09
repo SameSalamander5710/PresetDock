@@ -47,7 +47,7 @@ func main() {
 	}
 
 	heartbeat := runtime.NewHeartbeat()
-	cmdLauncher := &launcher.WindowsCmdLauncher{}
+	dispatcher := launcher.NewDispatcher()
 
 	// Start the stale batch-script sweeper (safety net for edge cases where
 	// normal cleanup can't run, e.g. app crash).
@@ -64,7 +64,7 @@ func main() {
 		}
 	}
 
-	handler := api.NewHandler(presetsDir, cmdLauncher, heartbeat, shutdown)
+	handler := api.NewHandler(presetsDir, dispatcher, heartbeat, shutdown)
 	handler.Register(mux, frontendFS)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:8765")
