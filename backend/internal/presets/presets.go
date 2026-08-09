@@ -21,6 +21,7 @@ type Preset struct {
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
 	Command     string   `json:"command"`
+	Shell       string   `json:"shell,omitempty"` // "cmd" (default) or "powershell"
 }
 
 // CreatePresetRequest is the API DTO for creating a new preset.
@@ -31,6 +32,7 @@ type CreatePresetRequest struct {
 	Tags           []string `json:"tags"`
 	Description    string   `json:"description"`
 	Command        string   `json:"command"`
+	Shell          string   `json:"shell"`
 	SourcePresetID string   `json:"source_preset_id,omitempty"`
 }
 
@@ -68,6 +70,11 @@ func Save(presetsDir string, targetID string, preset Preset, overwrite bool) (Pr
 	}
 	if err := Validate(preset); err != nil {
 		return PresetView{}, err
+	}
+
+	// Default shell to "cmd" when missing (backward compatibility).
+	if strings.TrimSpace(preset.Shell) == "" {
+		preset.Shell = "cmd"
 	}
 
 	targetPath := filepath.Join(presetsDir, targetID+".json")

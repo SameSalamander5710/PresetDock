@@ -113,6 +113,13 @@
             <span class="field-label">Model</span>
             <input id="preset-model" name="model" type="text" placeholder="gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL" />
           </label>
+          <label class="field">
+            <span class="field-label">Shell</span>
+            <select id="preset-shell" name="shell" class="pane-deck-selector">
+              <option value="cmd">Command Prompt</option>
+              <option value="powershell">PowerShell</option>
+            </select>
+          </label>
           <label class="field full-width">
             <span class="field-label">Tags</span>
             <textarea id="preset-tags" name="tags" rows="3" placeholder="gemma, E4B, QAT, Q4"></textarea>

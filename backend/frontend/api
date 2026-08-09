@@ -111,6 +111,7 @@ async function duplicatePreset(preset) {
       tags: preset.tags ? preset.tags.slice() : [],
       description: preset.description || '',
       command: preset.command || '',
+      shell: preset.shell || 'cmd',
       source_preset_id: preset.id,
     }),
   });

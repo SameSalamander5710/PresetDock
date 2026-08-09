@@ -85,6 +85,7 @@ func (h *Handler) HandleRunByID(w http.ResponseWriter, r *http.Request) {
 	command, cleanup, err := h.launcher.Prepare(launcher.CommandPayload{
 		Title:   preset.Name,
 		Command: preset.Command,
+		Shell:   preset.Shell,
 	})
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, fmt.Sprintf("failed to launch command: %v", err))

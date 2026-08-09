@@ -37,6 +37,7 @@ func (h *Handler) HandlePresetsList(w http.ResponseWriter, r *http.Request) {
 			Tags:        req.Tags,
 			Description: req.Description,
 			Command:     req.Command,
+			Shell:       req.Shell,
 		}
 
 		savedPreset, err := presets.Save(h.presetsDir, "", preset, false)

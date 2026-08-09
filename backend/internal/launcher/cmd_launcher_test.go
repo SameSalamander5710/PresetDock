@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-func TestWindowsCmdLauncherPrepare_EmptyCommand(t *testing.T) {
-	l := WindowsCmdLauncher{}
+func TestCmdLauncherPrepare_EmptyCommand(t *testing.T) {
+	l := CmdLauncher{}
 	_, _, err := l.Prepare(CommandPayload{Title: "Test", Command: ""})
 	if err == nil {
 		t.Fatal("expected error for empty command, got nil")
@@ -20,8 +20,8 @@ func TestWindowsCmdLauncherPrepare_EmptyCommand(t *testing.T) {
 	}
 }
 
-func TestWindowsCmdLauncherPrepare_TitleSanitization(t *testing.T) {
-	l := WindowsCmdLauncher{}
+func TestCmdLauncherPrepare_TitleSanitization(t *testing.T) {
+	l := CmdLauncher{}
 
 	cmd, cleanup, err := l.Prepare(CommandPayload{Title: `My "Preset"`, Command: "echo hello"})
 	if err != nil {
@@ -40,8 +40,8 @@ func TestWindowsCmdLauncherPrepare_TitleSanitization(t *testing.T) {
 	}
 }
 
-func TestWindowsCmdLauncherPrepare_DefaultTitle(t *testing.T) {
-	l := WindowsCmdLauncher{}
+func TestCmdLauncherPrepare_DefaultTitle(t *testing.T) {
+	l := CmdLauncher{}
 
 	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "", Command: "echo hello"})
 	if err != nil {
@@ -55,8 +55,8 @@ func TestWindowsCmdLauncherPrepare_DefaultTitle(t *testing.T) {
 	}
 }
 
-func TestWindowsCmdLauncherPrepare_CommandStructure(t *testing.T) {
-	l := WindowsCmdLauncher{}
+func TestCmdLauncherPrepare_CommandStructure(t *testing.T) {
+	l := CmdLauncher{}
 
 	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "MyApp", Command: "llama-server --help"})
 	if err != nil {
@@ -82,8 +82,8 @@ func TestWindowsCmdLauncherPrepare_CommandStructure(t *testing.T) {
 	}
 }
 
-func TestWindowsCmdLauncherPrepare_CreationFlags(t *testing.T) {
-	l := WindowsCmdLauncher{}
+func TestCmdLauncherPrepare_CreationFlags(t *testing.T) {
+	l := CmdLauncher{}
 
 	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "Test", Command: "echo ok"})
 	if err != nil {
@@ -96,8 +96,8 @@ func TestWindowsCmdLauncherPrepare_CreationFlags(t *testing.T) {
 	}
 }
 
-func TestWindowsCmdLauncherPrepare_BatchScriptCreated(t *testing.T) {
-	l := WindowsCmdLauncher{}
+func TestCmdLauncherPrepare_BatchScriptCreated(t *testing.T) {
+	l := CmdLauncher{}
 
 	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "Test", Command: "echo hello"})
 	if err != nil {
@@ -119,8 +119,8 @@ func TestWindowsCmdLauncherPrepare_BatchScriptCreated(t *testing.T) {
 	}
 }
 
-func TestWindowsCmdLauncherPrepare_BatchScriptContent(t *testing.T) {
-	l := WindowsCmdLauncher{}
+func TestCmdLauncherPrepare_BatchScriptContent(t *testing.T) {
+	l := CmdLauncher{}
 
 	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "MyTitle", Command: "set FOO=bar && echo done"})
 	if err != nil {
@@ -143,15 +143,15 @@ func TestWindowsCmdLauncherPrepare_BatchScriptContent(t *testing.T) {
 	}
 }
 
-func TestWindowsCmdLauncherPrepare_ImplementsLauncher(t *testing.T) {
-	var l Launcher = &WindowsCmdLauncher{}
+func TestCmdLauncherPrepare_ImplementsLauncher(t *testing.T) {
+	var l Launcher = &CmdLauncher{}
 	if l == nil {
-		t.Fatal("*WindowsCmdLauncher does not implement Launcher")
+		t.Fatal("*CmdLauncher does not implement Launcher")
 	}
 }
 
-func TestWindowsCmdLauncherPrepare_ReturnsNonNilCmdAndCleanup(t *testing.T) {
-	l := WindowsCmdLauncher{}
+func TestCmdLauncherPrepare_ReturnsNonNilCmdAndCleanup(t *testing.T) {
+	l := CmdLauncher{}
 	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "Example", Command: "echo hello"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -9,14 +9,9 @@ import (
 	"syscall"
 )
 
-// CREATE_NO_WINDOW: the outer cmd.exe never gets its own window — it only
-// exists to invoke "start /WAIT" and then exits once the spawned console
-// closes.
-const createNoWindow = 0x08000000
-
-// WindowsCmdLauncher is the default launcher for Windows that opens a new,
-// titled, visible console window and runs the preset command inside it.
-type WindowsCmdLauncher struct{}
+// CmdLauncher opens a new, titled, visible console window via cmd.exe
+// and runs the preset command inside it.
+type CmdLauncher struct{}
 
 // Prepare builds a cmd.exe process that opens a new visible console window
 // (via "start /WAIT") and runs the preset command inside it via a generated
@@ -33,7 +28,7 @@ type WindowsCmdLauncher struct{}
 // cmd.Wait() returning is a reliable signal covering normal exit, the user
 // closing the window, AND a force-kill via Task Manager — not just the
 // graceful case.
-func (l *WindowsCmdLauncher) Prepare(payload CommandPayload) (*exec.Cmd, func(), error) {
+func (l *CmdLauncher) Prepare(payload CommandPayload) (*exec.Cmd, func(), error) {
 	trimmed := strings.TrimSpace(payload.Command)
 	if trimmed == "" {
 		return nil, nil, errors.New("preset command is empty")
