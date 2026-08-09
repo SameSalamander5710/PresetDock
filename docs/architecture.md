@@ -67,11 +67,12 @@ The API layer depends on storage helpers, the `Launcher` interface, the
 
 `backend/internal/launcher/` owns the command execution abstraction.
 
-1. `launcher.go` defines the `Launcher` interface (`Prepare(CommandPayload) (*exec.Cmd, error)`) and the `CommandPayload` struct.
-2. `windows.go` provides `WindowsCmdLauncher`, the default implementation using `cmd.exe /C start`.
-3. `windows_test.go` validates empty-command rejection, title sanitization, default title fallback, and `SysProcAttr` flags.
-4. HTTP handlers depend on the `Launcher` interface, not the concrete Windows implementation.
-5. Future launchers (e.g., PowerShell, WSL) are added as new struct implementations without touching HTTP handlers.
+1. `launcher.go` defines the `Launcher` interface (`Prepare(CommandPayload) (*exec.Cmd, func(), error)`) and the `CommandPayload` struct. The third return value is a cleanup callback that removes temporary artifacts after the command exits.
+2. `windows.go` provides `WindowsCmdLauncher`, the default implementation using `cmd.exe /C start /WAIT`. Commands are written to a temp batch file (`presetdock-*.bat`) so shell operators (`&&`, `|`, `^`) are parsed only once by the inner console window. The outer `cmd.exe` uses `start /WAIT` so it blocks until the spawned window closes, making `cmd.Wait()` a reliable signal for cleanup.
+3. `cleanup.go` provides `StartStaleScriptSweeper()`, a background goroutine that periodically deletes stale `presetdock-*.bat` files older than a configurable max age from the temp directory. This is a safety net for edge cases where the normal cleanup callback is not invoked.
+4. `windows_test.go` validates empty-command rejection, title sanitization, default title fallback, `SysProcAttr` flags, batch file creation/cleanup, and batch script content.
+5. HTTP handlers call `Prepare()`, then spawn a background goroutine that waits for the command to exit and invokes the cleanup callback. This preserves the fire-and-forget HTTP response pattern (returns `{"status": "started"}` immediately).
+6. Future launchers (e.g., PowerShell, WSL) are added as new struct implementations without touching HTTP handlers.
 
 ### Runtime Layer
 

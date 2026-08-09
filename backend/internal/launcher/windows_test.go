@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -8,12 +9,12 @@ import (
 
 func TestWindowsCmdLauncherPrepare_EmptyCommand(t *testing.T) {
 	l := WindowsCmdLauncher{}
-	_, err := l.Prepare(CommandPayload{Title: "Test", Command: ""})
+	_, _, err := l.Prepare(CommandPayload{Title: "Test", Command: ""})
 	if err == nil {
 		t.Fatal("expected error for empty command, got nil")
 	}
 
-	_, err = l.Prepare(CommandPayload{Title: "Test", Command: "  "})
+	_, _, err = l.Prepare(CommandPayload{Title: "Test", Command: "  "})
 	if err == nil {
 		t.Fatal("expected error for whitespace-only command, got nil")
 	}
@@ -22,10 +23,11 @@ func TestWindowsCmdLauncherPrepare_EmptyCommand(t *testing.T) {
 func TestWindowsCmdLauncherPrepare_TitleSanitization(t *testing.T) {
 	l := WindowsCmdLauncher{}
 
-	cmd, err := l.Prepare(CommandPayload{Title: `My "Preset"`, Command: "echo hello"})
+	cmd, cleanup, err := l.Prepare(CommandPayload{Title: `My "Preset"`, Command: "echo hello"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	defer cleanup()
 
 	// Verify the SysProcAttr CmdLine contains sanitized title (quotes replaced with single quotes)
 	if cmd.SysProcAttr == nil {
@@ -41,10 +43,11 @@ func TestWindowsCmdLauncherPrepare_TitleSanitization(t *testing.T) {
 func TestWindowsCmdLauncherPrepare_DefaultTitle(t *testing.T) {
 	l := WindowsCmdLauncher{}
 
-	cmd, err := l.Prepare(CommandPayload{Title: "", Command: "echo hello"})
+	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "", Command: "echo hello"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	defer cleanup()
 
 	cmdLine := cmd.SysProcAttr.CmdLine
 	if !strings.Contains(cmdLine, "PresetDock") {
@@ -55,10 +58,11 @@ func TestWindowsCmdLauncherPrepare_DefaultTitle(t *testing.T) {
 func TestWindowsCmdLauncherPrepare_CommandStructure(t *testing.T) {
 	l := WindowsCmdLauncher{}
 
-	cmd, err := l.Prepare(CommandPayload{Title: "MyApp", Command: "llama-server --help"})
+	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "MyApp", Command: "llama-server --help"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	defer cleanup()
 
 	// exec.Command resolves the full path on Windows, so check the base name
 	base := filepath.Base(cmd.Path)
@@ -67,29 +71,75 @@ func TestWindowsCmdLauncherPrepare_CommandStructure(t *testing.T) {
 	}
 
 	cmdLine := cmd.SysProcAttr.CmdLine
-	if !strings.HasPrefix(cmdLine, `cmd /C start "MyApp" cmd /K `) {
+	if !strings.HasPrefix(cmdLine, `cmd /C start /WAIT "MyApp" cmd /K `) {
 		t.Errorf("unexpected CmdLine prefix: %s", cmdLine)
 	}
 
-	if !strings.HasSuffix(cmdLine, "llama-server --help") {
-		t.Errorf("expected CmdLine to end with the command, got: %s", cmdLine)
+	// The command is written inside the batch file, so the CmdLine ends with
+	// the quoted .bat path — verify it references a presetdock-*.bat file.
+	if !strings.Contains(cmdLine, "presetdock-") || !strings.HasSuffix(cmdLine, `.bat"`) {
+		t.Errorf("expected CmdLine to reference a presetdock-*.bat file, got: %s", cmdLine)
 	}
 }
 
 func TestWindowsCmdLauncherPrepare_CreationFlags(t *testing.T) {
 	l := WindowsCmdLauncher{}
 
-	cmd, err := l.Prepare(CommandPayload{Title: "Test", Command: "echo ok"})
+	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "Test", Command: "echo ok"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	defer cleanup()
 
 	if cmd.SysProcAttr.CreationFlags != createNoWindow {
 		t.Errorf("expected CreationFlags %d, got %d", createNoWindow, cmd.SysProcAttr.CreationFlags)
 	}
+}
 
-	if !cmd.SysProcAttr.HideWindow {
-		t.Error("expected HideWindow to be true")
+func TestWindowsCmdLauncherPrepare_BatchScriptCreated(t *testing.T) {
+	l := WindowsCmdLauncher{}
+
+	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "Test", Command: "echo hello"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify the batch file exists before cleanup
+	cmdLine := cmd.SysProcAttr.CmdLine
+	// The bat path is quoted at the end of the CmdLine, e.g. ... cmd /K "C:\Users\...\presetdock-abc123.bat"
+	batPath := strings.TrimSuffix(strings.TrimPrefix(strings.Fields(strings.TrimPrefix(cmdLine, `cmd /C start /WAIT "Test" cmd /K `))[0], `"`), `"`)
+	if _, err := os.Stat(batPath); err != nil {
+		t.Fatalf("batch file should exist before cleanup: %v", err)
+	}
+
+	// Verify cleanup removes the batch file
+	cleanup()
+	if _, err := os.Stat(batPath); !os.IsNotExist(err) {
+		t.Errorf("batch file should be removed after cleanup, still exists at %s", batPath)
+	}
+}
+
+func TestWindowsCmdLauncherPrepare_BatchScriptContent(t *testing.T) {
+	l := WindowsCmdLauncher{}
+
+	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "MyTitle", Command: "set FOO=bar && echo done"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	// Extract bat path from CmdLine
+	cmdLine := cmd.SysProcAttr.CmdLine
+	batPath := strings.TrimSuffix(strings.TrimPrefix(strings.Fields(strings.TrimPrefix(cmdLine, `cmd /C start /WAIT "MyTitle" cmd /K `))[0], `"`), `"`)
+
+	content, err := os.ReadFile(batPath)
+	if err != nil {
+		t.Fatalf("failed to read batch file: %v", err)
+	}
+
+	script := string(content)
+	if !strings.Contains(script, "set FOO=bar && echo done") {
+		t.Errorf("batch script should contain the full command, got: %s", script)
 	}
 }
 
@@ -100,13 +150,16 @@ func TestWindowsCmdLauncherPrepare_ImplementsLauncher(t *testing.T) {
 	}
 }
 
-func TestWindowsCmdLauncherPrepare_ReturnsNonNilCmd(t *testing.T) {
+func TestWindowsCmdLauncherPrepare_ReturnsNonNilCmdAndCleanup(t *testing.T) {
 	l := WindowsCmdLauncher{}
-	cmd, err := l.Prepare(CommandPayload{Title: "Example", Command: "echo hello"})
+	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "Example", Command: "echo hello"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if cmd == nil {
 		t.Fatal("expected non-nil *exec.Cmd")
+	}
+	if cleanup == nil {
+		t.Fatal("expected non-nil cleanup function")
 	}
 }

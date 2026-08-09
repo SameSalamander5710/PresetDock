@@ -32,7 +32,7 @@ func (h *Handler) HandleRunDirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	command, err := h.launcher.Prepare(launcher.CommandPayload{
+	command, cleanup, err := h.launcher.Prepare(launcher.CommandPayload{
 		Title:   payload.Name,
 		Command: payload.Command,
 	})
@@ -44,6 +44,17 @@ func (h *Handler) HandleRunDirect(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, fmt.Sprintf("failed to launch command: %v", err))
 		return
 	}
+
+	// Fire-and-forget for the HTTP response, but wait in the background so
+	// the temp batch file gets cleaned up once the console window closes
+	// (normal exit, user closing it, or Task Manager kill — /WAIT in the
+	// launcher covers all three).
+	go func() {
+		command.Wait()
+		if cleanup != nil {
+			cleanup()
+		}
+	}()
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
 }
@@ -71,7 +82,7 @@ func (h *Handler) HandleRunByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	command, err := h.launcher.Prepare(launcher.CommandPayload{
+	command, cleanup, err := h.launcher.Prepare(launcher.CommandPayload{
 		Title:   preset.Name,
 		Command: preset.Command,
 	})
@@ -83,6 +94,15 @@ func (h *Handler) HandleRunByID(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, fmt.Sprintf("failed to launch command: %v", err))
 		return
 	}
+
+	// Fire-and-forget for the HTTP response, but wait in the background so
+	// the temp batch file gets cleaned up once the console window closes
+	go func() {
+		command.Wait()
+		if cleanup != nil {
+			cleanup()
+		}
+	}()
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
 }

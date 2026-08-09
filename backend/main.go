@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"presetdock/backend/internal/api"
 	"presetdock/backend/internal/launcher"
@@ -47,6 +48,12 @@ func main() {
 
 	heartbeat := runtime.NewHeartbeat()
 	cmdLauncher := &launcher.WindowsCmdLauncher{}
+
+	// Start the stale batch-script sweeper (safety net for edge cases where
+	// normal cleanup can't run, e.g. app crash).
+	sweeperStop := make(chan struct{})
+	launcher.StartStaleScriptSweeper(5*time.Minute, 30*time.Minute, sweeperStop)
+	defer close(sweeperStop)
 
 	mux := http.NewServeMux()
 

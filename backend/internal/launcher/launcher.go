@@ -8,7 +8,10 @@ type CommandPayload struct {
 	Command string // The raw command to execute
 }
 
-// Launcher prepares a command payload into an exec.Cmd ready to be started.
+// Launcher prepares a command for execution on the current platform.
+// The returned cleanup func should be called once the returned *exec.Cmd
+// has exited (e.g. after cmd.Wait() returns); it may be nil-safe/no-op on
+// platforms that don't need temp-file cleanup.
 type Launcher interface {
-	Prepare(payload CommandPayload) (*exec.Cmd, error)
+	Prepare(payload CommandPayload) (*exec.Cmd, func(), error)
 }
