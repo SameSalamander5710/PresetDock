@@ -97,8 +97,13 @@ let editingDeckName = null;
 function showDecksDialog() {
   const r = dialogRefs();
   editingDeckName = null;
+  r.deckNameInput.value = '';
+  r.deckPresetsSearch.value = '';
   r.deckEditorEmpty.hidden = true;
-  r.deckEditorForm.hidden = true;
+  r.deckEditorForm.hidden = false;
+  r.deckFeedback.textContent = '';
+  r.deckFeedback.classList.remove('error');
+  renderDeckPresetsList([]);
   renderDecksList();
   r.decksDialog.showModal();
 }
