@@ -9,11 +9,6 @@ import (
 	"syscall"
 )
 
-// createNoWindow: the outer cmd.exe never gets its own window — it only
-// exists to invoke "start /WAIT" and then exits once the spawned console
-// closes.
-const createNoWindow = 0x08000000
-
 // CmdLauncher opens a new, titled, visible console window via cmd.exe
 // and runs the preset command inside it.
 type CmdLauncher struct{}
