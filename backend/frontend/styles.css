@@ -720,6 +720,18 @@ button:disabled {
   color: var(--danger);
 }
 
+/* Inconspicuous preset ID shown at the bottom of the editor dialog. */
+.preset-uid {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  user-select: all;
+  cursor: default;
+}
+
 .empty {
   padding: 18px;
   border-radius: var(--radius);

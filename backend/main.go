@@ -37,9 +37,12 @@ func main() {
 	}
 
 	presetsDir := resolvePresetsDir(exeDir)
-	if err := presets.EnsureDir(presetsDir); err != nil {
-		log.Fatal(err)
+	// Migrate legacy preset files to the <slug>-<uid>.json layout and seed
+	// a default example preset when the directory holds none.
+	if err := presets.Migrate(presetsDir); err != nil {
+		log.Fatalf("Failed to migrate presets directory: %v", err)
 	}
+	log.Printf("Preset storage initialized at %s", presetsDir)
 
 	frontendFS, err := fs.Sub(embeddedFrontend, "frontend")
 	if err != nil {

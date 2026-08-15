@@ -40,7 +40,7 @@ func (h *Handler) HandlePresetsList(w http.ResponseWriter, r *http.Request) {
 			Shell:       req.Shell,
 		}
 
-		savedPreset, err := presets.Save(h.presetsDir, "", preset, false)
+		savedPreset, err := presets.Save(h.presetsDir, preset)
 		if err != nil {
 			httpError(w, http.StatusBadRequest, err.Error())
 			return
@@ -74,8 +74,12 @@ func (h *Handler) HandlePresetByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		savedPreset, err := presets.Save(h.presetsDir, id, preset, true)
+		savedPreset, err := presets.Update(h.presetsDir, id, preset)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				http.NotFound(w, r)
+				return
+			}
 			httpError(w, http.StatusBadRequest, err.Error())
 			return
 		}

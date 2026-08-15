@@ -21,6 +21,7 @@ function dialogRefs() {
       presetCommand: assertElement('preset-command', 'dialogs'),
       presetShell: assertElement('preset-shell', 'dialogs'),
       presetEditorFeedback: assertElement('preset-editor-feedback', 'dialogs'),
+      presetUid: assertElement('preset-uid', 'dialogs'),
       editorSave: assertElement('editor-save', 'dialogs'),
       editorCancel: assertElement('editor-cancel', 'dialogs'),
       editorClose: assertElement('editor-close', 'dialogs'),
@@ -59,6 +60,13 @@ function openEditorForPreset(preset) {
   r.presetDescription.value = preset.description || '';
   r.presetCommand.value = preset.command || '';
   r.presetShell.value = preset.shell || 'cmd';
+  if (preset.id) {
+    r.presetUid.textContent = preset.uid || preset.id;
+    r.presetUid.title = 'Unique preset ID (appended to the preset file name)';
+    r.presetUid.hidden = false;
+  } else {
+    r.presetUid.hidden = true;
+  }
   r.presetEditorFeedback.textContent = '';
   r.presetEditorFeedback.classList.remove('error');
   r.editorSave.textContent = 'Save changes';
@@ -77,6 +85,7 @@ function openCreateEditor() {
   r.presetDescription.value = '';
   r.presetCommand.value = '';
   r.presetShell.value = 'cmd';
+  r.presetUid.hidden = true;
   r.presetEditorFeedback.textContent = '';
   r.presetEditorFeedback.classList.remove('error');
   r.editorSave.textContent = 'Save preset';
