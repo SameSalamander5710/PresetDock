@@ -20,6 +20,8 @@ func (h *Handler) HandleFavouritesList(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, favs)
 
 	case http.MethodPost:
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		var payload struct {
 			PresetID string `json:"preset_id"`
 		}
@@ -66,6 +68,10 @@ func (h *Handler) HandleFavouriteByID(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodDelete)
 		return
 	}
+
+	// DELETE mutates the store, so serialize it.
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	favs, err := favourites.Load(h.presetsDir)
 	if err != nil {

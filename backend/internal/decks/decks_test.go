@@ -1,7 +1,9 @@
 package decks
 
 import (
+	"errors"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -205,5 +207,36 @@ func TestRemovePresetNoChangeDoesNotRewrite(t *testing.T) {
 	}
 	if string(before) != string(after) {
 		t.Errorf("file should not be rewritten when the ID is not present")
+	}
+}
+
+// --- Load: a corrupt file is quarantined, not fatal ---
+
+func TestLoadCorruptFileIsQuarantined(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(Path(dir), []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("seed corrupt file: %v", err)
+	}
+
+	list, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load should not fail on a corrupt file, got: %v", err)
+	}
+	if len(list) != 0 {
+		t.Errorf("Load = %v, want empty", list)
+	}
+	if _, err := os.Stat(Path(dir)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("corrupt decks.json should be moved aside, stat err = %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	if len(entries) != 1 || !strings.Contains(entries[0].Name(), ".corrupt-") {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("expected one quarantined file, dir = %v", names)
 	}
 }

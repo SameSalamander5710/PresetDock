@@ -3,8 +3,11 @@ package favourites
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
+
+	"presetdock/backend/internal/storeutil"
 )
 
 // Path returns the resolved path for favourites.json.
@@ -13,7 +16,8 @@ func Path(presetsDir string) string {
 }
 
 // Load reads the favourite preset IDs from disk.
-// Returns an empty slice (not nil) when the file does not exist.
+// Returns an empty slice (not nil) when the file does not exist or is corrupt;
+// a corrupt file is quarantined to favourites.json.corrupt-<timestamp>.
 func Load(presetsDir string) ([]string, error) {
 	data, err := os.ReadFile(Path(presetsDir))
 	if err != nil {
@@ -24,7 +28,12 @@ func Load(presetsDir string) ([]string, error) {
 	}
 	var favs []string
 	if err := json.Unmarshal(data, &favs); err != nil {
-		return nil, err
+		// A corrupt favourites.json must not take the whole UI down: move the
+		// file aside (preserving it for recovery) and start fresh.
+		if q := storeutil.Quarantine(Path(presetsDir)); q != "" {
+			log.Printf("favourites: quarantined corrupt favourites.json to %s", q)
+		}
+		return []string{}, nil
 	}
 	return favs, nil
 }
@@ -42,14 +51,14 @@ func LoadSet(presetsDir string) (map[string]bool, error) {
 	return set, nil
 }
 
-// Save writes the favourite preset IDs to disk.
+// Save writes the favourite preset IDs to disk atomically.
 func Save(presetsDir string, favs []string) error {
 	data, err := json.MarshalIndent(favs, "", "  ")
 	if err != nil {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(Path(presetsDir), data, 0o644)
+	return storeutil.WriteFileAtomic(Path(presetsDir), data, 0o644)
 }
 
 // RemoveID strips presetID from the favourites list and persists the change.

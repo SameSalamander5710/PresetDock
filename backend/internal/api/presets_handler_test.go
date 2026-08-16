@@ -113,6 +113,20 @@ func putPreset(t *testing.T, srv http.Handler, id string, body map[string]any) m
 	return out
 }
 
+func TestOversizedRequestBodyIsRejected(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	body := make([]byte, 1<<20+1) // one byte over the 1 MiB API body limit
+	req := httptest.NewRequest(http.MethodPost, "/api/presets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("oversized body = %d, want 413", rec.Code)
+	}
+}
+
 func TestCreatePresetWithDeckNames(t *testing.T) {
 	srv, dir := newTestServer(t)
 	seedDecks(t, dir, "Alpha", "Beta")

@@ -30,8 +30,8 @@ The repo should stay explicit and modular, not framework-like.
 
 `backend/main.go` is a thin wiring layer. It resolves paths, creates the embedded
 frontend filesystem, constructs dependencies, registers routes, starts the HTTP
-server, and coordinates shutdown. It should not contain route handlers, HTTP
-logic, or lifecycle state.
+server with bounded request timeouts, and coordinates shutdown. It should not
+contain route handlers, HTTP logic, or lifecycle state.
 
 ### API Layer
 
@@ -56,6 +56,11 @@ logic, or lifecycle state.
 - `run_handler.go` — `POST /api/run` (direct command), `POST /api/run/:id` (preset).
 - `runtime_handler.go` — `POST /api/heartbeat`, `POST /api/shutdown`.
 
+All `/api/` routes are mounted on a sub-mux behind a 1 MiB request-body cap
+(overly large bodies are rejected with 413 before reaching a handler), and all
+mutation handlers are serialized behind a mutex because the JSON stores use
+read-modify-write without on-disk locking.
+
 The API layer depends on storage helpers, the `Launcher` interface, the
 `Heartbeat` state, and a shutdown callback. It does not own process lifecycle.
 
@@ -68,6 +73,18 @@ The API layer depends on storage helpers, the `Launcher` interface, the
 2. Validation for their own data.
 3. ID generation and slugging for presets.
 4. Membership propagation helpers where needed.
+
+### File Integrity
+
+`backend/internal/storeutil/` is shared by all JSON stores:
+
+- `WriteFileAtomic(path, data, perm)` — writes to a temp file in the same
+  directory and renames it into place, so a crash or power loss mid-write can
+  never leave a truncated store file.
+- `Quarantine(path)` — renames a file to a timestamped `<path>.corrupt-<ts>`
+  sibling and returns the new path. When a store file fails to parse, the
+  store's `Load()` quarantines it and returns an empty state instead of
+  failing; the original bytes are preserved on disk for inspection.
 
 ### Central Membership Writer
 
@@ -126,27 +143,37 @@ uses the new layout.
 `backend/internal/launcher/` owns the command execution abstraction.
 
 1. `launcher.go` defines the `Launcher` interface (`Prepare(CommandPayload) (*exec.Cmd, func(), error)`) and the `CommandPayload` struct (fields: `Title`, `Command`, `Shell`). The third return value is a cleanup callback that removes temporary artifacts after the command exits.
-2. `cmd_launcher.go` provides `WindowsCmdLauncher`, the default implementation using `cmd.exe /C start /WAIT`. Commands are written to a temp batch file (`presetdock-*.bat`) so shell operators (`&&`, `|`, `^`) are parsed only once by the inner console window. The outer `cmd.exe` uses `start /WAIT` so it blocks until the spawned window closes, making `cmd.Wait()` a reliable signal for cleanup.
+2. `cmd_launcher.go` provides `CmdLauncher`, the default implementation using `cmd.exe /C start /WAIT`. Commands are written to a temp batch file (`presetdock-*.bat`) so shell operators (`&&`, `|`, `^`) are parsed only once by the inner console window. The outer `cmd.exe` uses `start /WAIT` so it blocks until the spawned window closes, making `cmd.Wait()` a reliable signal for cleanup. Window titles are sanitized (`"` → `'`, empty → `PresetDock`, `%` → `%%`) because cmd.exe expands `%VAR%` sequences in both the outer command line and the batch file.
 3. `powershell_launcher.go` provides `PowerShellLauncher`, which solves the Go `os/exec` stdio-NUL problem by using a two-stage launch: a hidden outer PowerShell process calls `Start-Process` to spawn an independent inner PowerShell window. Both scripts use `-EncodedCommand` (UTF-16LE base64) to eliminate all quoting and escaping issues — pipes, backticks, `$vars`, and nested quotes in the preset command behave exactly as if typed by hand. The inner script sets the window title, runs the user command, then prints "Press any key to close..." and waits for a keypress so the window stays open for the user to read output. No temp files are needed, so cleanup is a no-op.
-4. `dispatcher.go` provides `Dispatcher`, which implements `Launcher` and routes `Prepare()` calls to the correct launcher based on `CommandPayload.Shell` ("cmd" → `WindowsCmdLauncher`, "powershell" → `PowerShellLauncher`). Defaults to "cmd" for empty/unknown values.
+4. `dispatcher.go` provides `Dispatcher`, which implements `Launcher` and routes `Prepare()` calls to the correct launcher based on `CommandPayload.Shell` ("cmd" → `CmdLauncher`, "powershell" → `PowerShellLauncher`). Defaults to "cmd" for empty/unknown values.
 5. `cleanup.go` provides `StartStaleScriptSweeper()`, a background goroutine that periodically deletes stale `presetdock-*.bat` files older than a configurable max age from the temp directory. This is a safety net for edge cases where the normal cleanup callback is not invoked.
-6. `cmd_launcher_test.go` validates empty-command rejection, title sanitization, default title fallback, `SysProcAttr` flags, batch file creation/cleanup, and batch script content.
+6. `cmd_launcher_test.go` validates empty-command rejection, title sanitization (quotes, default fallback, percent escaping), `SysProcAttr` flags, batch file creation/cleanup, and batch script content.
 7. `powershell_launcher_test.go` validates empty-command rejection, default title fallback, single-quote escaping in titles, `SysProcAttr` flags (hidden outer process), outer/inner script structure, and `encodePowerShellCommand()` round-trip encoding.
-7. HTTP handlers call `Prepare()`, then spawn a background goroutine that waits for the command to exit and invokes the cleanup callback. This preserves the fire-and-forget HTTP response pattern (returns `{"status": "started"}` immediately).
-8. Future launchers (e.g., WSL) are added as new struct implementations and registered in the dispatcher without touching HTTP handlers.
+8. HTTP handlers call `Prepare()`, then spawn a background goroutine that waits for the command to exit and invokes the cleanup callback. This preserves the fire-and-forget HTTP response pattern (returns `{"status": "started"}` immediately).
+9. Future launchers (e.g., WSL) are added as new struct implementations and registered in the dispatcher without touching HTTP handlers.
 
 ### Runtime Layer
 
 `backend/internal/runtime/` owns process lifecycle helpers.
 
-- `heartbeat.go` — `Heartbeat` state with `Touch()` and `Stale(timeout)`
-  methods.
+- `addr.go` — the single source of truth for the local port: `Port` (8765)
+  and the derived `ListenAddr()`, `LocalURL()`, and `LocalPresetsURL()`
+  helpers used by the server, the browser launch, and the already-running
+  check.
+- `heartbeat.go` — `Heartbeat` state with `Touch()`, `Stale(timeout)`, and
+  `Since()` (time since the last touch) methods.
 - `runner.go` — `Runner` struct that wraps `*http.Server`, exposes
   `MonitorHeartbeat()` (background goroutine) and `Shutdown()` (graceful
-  server shutdown).
+  server shutdown). The monitor checks staleness every 15s against a 2-minute
+  timeout. If a check gap much larger than the check interval is detected
+  (the process was suspended by system sleep), it waits one 30s wake-grace
+  window for a fresh heartbeat before shutting down, so a still-open browser
+  tab survives a sleep. The wake grace mirrors the client-side heartbeat
+  interval in `frontend/heartbeat.js`; keep the two in sync if either changes.
 - `browser.go` — `OpenBrowser()` launches the default browser via `cmd.exe`.
-- `already_running.go` — `LaunchIfAlreadyRunning()` redirects to the existing
-  instance when port 8765 is already in use.
+- `already_running.go` — `LaunchIfAlreadyRunning()` probes the existing
+  instance's `/api/presets` endpoint and re-opens the browser when the port is
+  already in use.
 
 ## Frontend Boundaries
 
@@ -168,40 +195,43 @@ It contains no business logic, rendering, or API calls.
 
 ### Shared State
 
-`backend/frontend/state.js` owns all shared arrays (`presets`, `decks`,
-`favourites`) and their mutation helpers (`setPresets`, `setDecks`,
-`setFavourites`, `addPreset`, `updatePreset`, `removePreset`, `addDeck`,
-`updateDeck`, `removeDeck`, `addFavourite`, `removeFavourite`). It also owns
-the `setStatus()` helper for updating the status bar.
+`backend/frontend/state.js` owns the shared caches (`presetsCache`,
+`decksCache`, `favouritesCache`), the `viewMode` flag, the pane instances
+(`leftPane`, `rightPane`), and the card-actions reference. Its mutation
+helpers are `setPresets()`, `setDecks()`, `setFavourites()`,
+`setCardActionsRef()`/`getCardActionsRef()`, and the `createPaneState()`
+factory for pane state objects.
 
 ### DOM Helpers
 
-`backend/frontend/dom.js` owns safe DOM lookup (`getElement`, `assertElement`)
-and DOM creation helpers (`createSelectOption`). `assertElement` throws a
-descriptive error when a required node is missing, which fails fast during
-bootstrap instead of producing silent `null` errors later.
+`backend/frontend/dom.js` owns `assertElement()` and the `setStatus()` helper
+for the status bar. `assertElement` throws a descriptive error when a required
+node is missing, which fails fast during bootstrap instead of producing silent
+`null` errors later.
 
 ### API Helpers
 
-`backend/frontend/api` (extensionless to avoid Go embed content-type issues)
-owns all `fetch` calls and endpoint helpers: `loadServerInfo`, `loadPresets`,
-`loadDecks`, `loadFavourites`, `toggleFavourite`, `runPreset`, `duplicatePreset`,
+`backend/frontend/api.js` owns all `fetch` calls and endpoint helpers: `loadPresets`, `loadDecks`,
+`loadFavourites`, `toggleFavourite`, `runPreset`, `duplicatePreset`,
 `deletePreset`, `savePreset`, `createPreset`, `saveDeck`, `createDeckApi`,
 `deleteDeckApi`, `runCommand`, `shutdownServer`.
 
 ### Heartbeat
 
 `backend/frontend/heartbeat.js` owns the client-side liveness loop.
-`startHeartbeat()` posts to `/api/heartbeat` every 5s. `stopHeartbeat()`
-cleans up the interval. `HEARTBEAT_INTERVAL` and `HEARTBEAT_TIMEOUT` are
-configurable constants.
+`startHeartbeat()` posts to `/api/heartbeat` every 30s (hardcoded interval,
+no body is parsed from the 204 response); `stopHeartbeat()` cleans up the
+interval. The 30s client interval is coupled to the server-side wake grace in
+`runtime/runner.go` (also 30s): after a system sleep, an open tab gets one
+beat window to re-assert liveness. Keep both values in sync if either changes.
 
 ### Rendering
 
-`backend/frontend/panes.js` owns pane state, rendering, filtering, suggestions,
-and view mode. Key exports: `createPaneState()`, `wirePaneEvents()`,
-`renderAllPanes()`, `renderPane()`, `filterPresets()`, `buildSuggestions()`,
-`showSuggestions()`/`hideSuggestions()`, `syncDeckSelectors()`,
+`backend/frontend/panes.js` owns pane rendering, filtering, suggestions, and
+view mode (pane state objects come from `createPaneState()` in `state.js`).
+Key exports: `createPresetCard()`, `wirePaneEvents()`, `renderAllPanes()`,
+`renderPane()`, `filterPresetsForPane()`, `generateSuggestions()`/
+`renderSuggestions()`/`hideSuggestions()`, `syncDeckSelectors()`,
 `setViewModeUI()`.
 
 ### Dialogs

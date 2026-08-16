@@ -8,11 +8,8 @@ function startHeartbeat() {
   if (heartbeatInterval) return;
   heartbeatInterval = setInterval(async () => {
     try {
-      const res = await fetch(`${apiBase}/api/heartbeat`, { method: 'POST' });
-      // Backend returns 204 No Content — treat any 2xx as success, do NOT parse JSON
-      if (res.ok && res.status !== 204) {
-        // If a body is ever returned in the future, handle it here
-      }
+      // Backend returns 204 No Content — no body to parse, any outcome is fine.
+      await fetch(`${apiBase}/api/heartbeat`, { method: 'POST' });
     } catch {
       // ignore heartbeat failures
     }

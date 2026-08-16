@@ -34,10 +34,7 @@ func (l *CmdLauncher) Prepare(payload CommandPayload) (*exec.Cmd, func(), error)
 		return nil, nil, errors.New("preset command is empty")
 	}
 
-	title := strings.ReplaceAll(strings.TrimSpace(payload.Title), `"`, "'")
-	if title == "" {
-		title = "PresetDock"
-	}
+	title := sanitizeTitle(payload.Title)
 
 	batPath, err := writeBatchScript(title, trimmed)
 	if err != nil {
@@ -53,6 +50,19 @@ func (l *CmdLauncher) Prepare(payload CommandPayload) (*exec.Cmd, func(), error)
 		CreationFlags: createNoWindow, // only hides the outer, throwaway cmd
 	}
 	return command, cleanup, nil
+}
+
+// sanitizeTitle makes a preset title safe to interpolate into a cmd.exe
+// command line and a batch script. Embedded double quotes are replaced
+// because the title is wrapped in double quotes on the outer command line,
+// and literal percents are doubled because cmd.exe expands %VAR% sequences
+// in both command lines and batch files.
+func sanitizeTitle(title string) string {
+	title = strings.ReplaceAll(strings.TrimSpace(title), `"`, "'")
+	if title == "" {
+		title = "PresetDock"
+	}
+	return strings.ReplaceAll(title, "%", "%%")
 }
 
 // writeBatchScript writes the preset command to a temp .bat file so that

@@ -20,6 +20,8 @@ func (h *Handler) HandleDecksList(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, decksList)
 
 	case http.MethodPost:
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		var deck decks.Deck
 		if err := json.NewDecoder(r.Body).Decode(&deck); err != nil {
 			httpError(w, http.StatusBadRequest, "invalid JSON")
@@ -62,6 +64,11 @@ func (h *Handler) HandleDeckByName(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+
+	// Both PUT and DELETE mutate the store (and share the load above), so
+	// serialize them.
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	decksList, err := decks.Load(h.presetsDir)
 	if err != nil {

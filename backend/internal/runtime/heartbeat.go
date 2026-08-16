@@ -30,3 +30,11 @@ func (h *Heartbeat) Stale(timeout time.Duration) bool {
 	h.mu.Unlock()
 	return time.Since(lastBeat) > timeout
 }
+
+// Since reports how long ago the last heartbeat was received.
+func (h *Heartbeat) Since() time.Duration {
+	h.mu.Lock()
+	lastBeat := h.lastBeat
+	h.mu.Unlock()
+	return time.Since(lastBeat)
+}

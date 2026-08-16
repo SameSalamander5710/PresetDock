@@ -339,3 +339,62 @@ func TestDeleteRemovesFile(t *testing.T) {
 		t.Errorf("file should be removed after Delete")
 	}
 }
+
+// --- Corrupt files are quarantined, not fatal ---
+
+func countQuarantined(t *testing.T, dir string) int {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	n := 0
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".corrupt-") {
+			n++
+		}
+	}
+	return n
+}
+
+func TestLoadCorruptPresetIsQuarantined(t *testing.T) {
+	dir := t.TempDir()
+	mustSave(t, dir, Preset{Name: "Good", Command: "cmd"})
+	writeJSON(t, filepath.Join(dir, "broken-abcdef1.json"), "{not json")
+
+	views, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load should not fail on a corrupt file, got: %v", err)
+	}
+	if len(views) != 1 {
+		t.Fatalf("expected the 1 good preset, got %d", len(views))
+	}
+	if views[0].Name != "Good" {
+		t.Errorf("unexpected preset %q", views[0].Name)
+	}
+	if n := countQuarantined(t, dir); n != 1 {
+		t.Errorf("expected 1 quarantined file, got %d", n)
+	}
+}
+
+func TestMigrateCorruptFileIsQuarantinedAndSeeds(t *testing.T) {
+	dir := t.TempDir()
+	writeJSON(t, filepath.Join(dir, "broken-abcdef1.json"), "{not json")
+
+	if err := Migrate(dir); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	// The corrupt file must not count as a preset, so the directory is still
+	// seeded with the example preset.
+	views, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(views) != 1 {
+		t.Fatalf("expected the seeded example preset, got %d", len(views))
+	}
+	if n := countQuarantined(t, dir); n != 1 {
+		t.Errorf("expected 1 quarantined file, got %d", n)
+	}
+}

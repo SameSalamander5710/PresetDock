@@ -40,6 +40,44 @@ func TestCmdLauncherPrepare_TitleSanitization(t *testing.T) {
 	}
 }
 
+func TestCmdLauncherPrepare_PercentTitleEscaped(t *testing.T) {
+	l := CmdLauncher{}
+
+	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "100% done", Command: "echo hello"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	// cmd.exe expands %VAR% in command lines, so the literal percent must
+	// be doubled or a title like "%PATH%" would expand to an env var.
+	cmdLine := cmd.SysProcAttr.CmdLine
+	if !strings.Contains(cmdLine, `100%% done`) {
+		t.Errorf("expected doubled percent in CmdLine, got: %s", cmdLine)
+	}
+}
+
+func TestCmdLauncherPrepare_PercentTitleInBatchScript(t *testing.T) {
+	l := CmdLauncher{}
+
+	cmd, cleanup, err := l.Prepare(CommandPayload{Title: "50% off", Command: "echo hello"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	cmdLine := cmd.SysProcAttr.CmdLine
+	batPath := strings.TrimSuffix(strings.TrimPrefix(strings.Fields(strings.TrimPrefix(cmdLine, `cmd /C start /WAIT "50%% off" cmd /K `))[0], `"`), `"`)
+
+	content, err := os.ReadFile(batPath)
+	if err != nil {
+		t.Fatalf("failed to read batch file: %v", err)
+	}
+	if !strings.Contains(string(content), "title 50%% off") {
+		t.Errorf("batch script should contain the doubled-percent title, got: %s", string(content))
+	}
+}
+
 func TestCmdLauncherPrepare_DefaultTitle(t *testing.T) {
 	l := CmdLauncher{}
 

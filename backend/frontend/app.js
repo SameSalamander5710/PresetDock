@@ -80,9 +80,6 @@ async function init() {
   // Start heartbeat
   startHeartbeat();
 
-  // Load server info if element exists
-  loadServerInfo();
-
   // Mark bootstrap as successful
   setStatus('Ready');
 }

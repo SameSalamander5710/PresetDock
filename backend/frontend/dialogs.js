@@ -140,6 +140,12 @@ function renderPresetDecksList(presetId) {
 // --------------------------------------------------------------------------
 let editingDeckName = null;
 
+// Preset IDs currently selected in the deck editor. Kept in a Set (instead of
+// being read back from the rendered checkboxes) so that filtering the preset
+// list with the search box can never silently drop non-matching presets from
+// the deck on save.
+let deckSelectedIds = new Set();
+
 function setDeckPresetsLabel(isNew) {
   const r = dialogRefs();
   r.deckPresetsLabel.textContent = isNew ? 'Presets available' : 'Presets in this deck';
@@ -148,6 +154,7 @@ function setDeckPresetsLabel(isNew) {
 function showDecksDialog() {
   const r = dialogRefs();
   editingDeckName = null;
+  deckSelectedIds = new Set();
   setDeckPresetsLabel(true);
   r.deckNameInput.value = '';
   r.deckPresetsSearch.value = '';
@@ -155,7 +162,7 @@ function showDecksDialog() {
   r.deckEditorForm.hidden = false;
   r.deckFeedback.textContent = '';
   r.deckFeedback.classList.remove('error');
-  renderDeckPresetsList([]);
+  renderDeckPresetsList();
   renderDecksList();
   r.decksDialog.showModal();
 }
@@ -169,6 +176,7 @@ function closeDecksDialog() {
 function showNewDeckUI() {
   const r = dialogRefs();
   editingDeckName = null;
+  deckSelectedIds = new Set();
   setDeckPresetsLabel(true);
   r.deckNameInput.value = '';
   r.deckPresetsSearch.value = '';
@@ -176,7 +184,7 @@ function showNewDeckUI() {
   r.deckEditorForm.hidden = false;
   r.deckFeedback.textContent = '';
   r.deckFeedback.classList.remove('error');
-  renderDeckPresetsList([]);
+  renderDeckPresetsList();
   renderDecksList();
 }
 
@@ -223,11 +231,16 @@ function selectDeckForEditing(deckName) {
   r.deckFeedback.textContent = '';
   r.deckFeedback.classList.remove('error');
 
-  renderDeckPresetsList(deck.preset_ids);
+  deckSelectedIds = new Set(deck.preset_ids || []);
+  renderDeckPresetsList();
   renderDecksList();
 }
 
-function renderDeckPresetsList(selectedIds) {
+// Renders the preset checkboxes in the deck editor, filtered by the search
+// box. Checkbox state is read from and written back to deckSelectedIds (the
+// single source of truth for the in-progress selection), so filtering the
+// list with the search box never loses the state of non-matching presets.
+function renderDeckPresetsList() {
   const r = dialogRefs();
   const searchQuery = r.deckPresetsSearch.value.toLowerCase().trim();
   r.deckPresetsList.innerHTML = '';
@@ -257,7 +270,14 @@ function renderDeckPresetsList(selectedIds) {
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.value = preset.id;
-    cb.checked = selectedIds.includes(preset.id);
+    cb.checked = deckSelectedIds.has(preset.id);
+    cb.addEventListener('change', () => {
+      if (cb.checked) {
+        deckSelectedIds.add(preset.id);
+      } else {
+        deckSelectedIds.delete(preset.id);
+      }
+    });
 
     const label = document.createElement('span');
     label.textContent = preset.name || preset.id;
@@ -363,16 +383,10 @@ function wireDialogs(onEditorSave, onEditorRun, onDeckSave, onDeckDelete) {
   r.editorCancel.addEventListener('click', closeEditor);
   r.editorClose.addEventListener('click', closeEditor);
 
-  // Deck presets search
+  // Deck presets search — re-renders the (filtered) list; checkbox state is
+  // preserved because it lives in deckSelectedIds, not in the DOM.
   r.deckPresetsSearch.addEventListener('input', () => {
-    if (editingDeckName) {
-      const deck = decksCache.find((d) => d.name === editingDeckName);
-      if (deck) {
-        renderDeckPresetsList(deck.preset_ids);
-        return;
-      }
-    }
-    renderDeckPresetsList([]);
+    renderDeckPresetsList();
   });
 
   // Deck new button
@@ -387,11 +401,9 @@ function wireDialogs(onEditorSave, onEditorRun, onDeckSave, onDeckDelete) {
       return;
     }
 
-    const checkboxes = r.deckPresetsList.querySelectorAll('.deck-preset-item input[type="checkbox"]');
-    const presetIds = [];
-    checkboxes.forEach((cb) => {
-      if (cb.checked) presetIds.push(cb.value);
-    });
+    // Read the selection from the Set (not the rendered checkboxes) so presets
+    // hidden by the search filter keep their state.
+    const presetIds = [...deckSelectedIds];
 
     r.deckSaveButton.disabled = true;
     r.deckFeedback.classList.remove('error');
@@ -422,11 +434,10 @@ function wireDialogs(onEditorSave, onEditorRun, onDeckSave, onDeckDelete) {
 
     try {
       await onDeckDelete(editingDeckName);
+      // Reset the editor to the "new deck" state instead of leaving a blank
+      // pane, then report the result.
+      showNewDeckUI();
       r.deckFeedback.textContent = 'Deck deleted.';
-      r.deckEditorEmpty.hidden = true;
-      r.deckEditorForm.hidden = true;
-      editingDeckName = '';
-      renderDecksList();
     } catch (error) {
       r.deckFeedback.classList.add('error');
       r.deckFeedback.textContent = error.message || 'Delete failed.';

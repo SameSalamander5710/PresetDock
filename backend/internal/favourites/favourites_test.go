@@ -1,7 +1,9 @@
 package favourites
 
 import (
+	"errors"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -47,5 +49,36 @@ func TestRemoveIDOnMissingFile(t *testing.T) {
 	dir := t.TempDir()
 	if err := RemoveID(dir, "p1"); err != nil {
 		t.Fatalf("RemoveID on missing file should be a no-op, got: %v", err)
+	}
+}
+
+// --- Load: a corrupt file is quarantined, not fatal ---
+
+func TestLoadCorruptFileIsQuarantined(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(Path(dir), []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("seed corrupt file: %v", err)
+	}
+
+	favs, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load should not fail on a corrupt file, got: %v", err)
+	}
+	if len(favs) != 0 {
+		t.Errorf("Load = %v, want empty", favs)
+	}
+	if _, err := os.Stat(Path(dir)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("corrupt favourites.json should be moved aside, stat err = %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	if len(entries) != 1 || !strings.Contains(entries[0].Name(), ".corrupt-") {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("expected one quarantined file, dir = %v", names)
 	}
 }

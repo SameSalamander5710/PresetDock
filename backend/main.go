@@ -70,7 +70,7 @@ func main() {
 	handler := api.NewHandler(presetsDir, dispatcher, heartbeat, shutdown)
 	handler.Register(mux, frontendFS)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:8765")
+	listener, err := net.Listen("tcp", runtime.ListenAddr())
 	if err != nil {
 		if runtime.LaunchIfAlreadyRunning() {
 			return
@@ -78,11 +78,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := runtime.OpenBrowser("http://127.0.0.1:8765"); err != nil {
+	if err := runtime.OpenBrowser(runtime.LocalURL()); err != nil {
 		log.Printf("browser launch failed: %v", err)
 	}
 
-	server := &http.Server{Handler: mux}
+	server := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 	runner = runtime.NewRunner(server)
 	go runner.MonitorHeartbeat(heartbeat)
 

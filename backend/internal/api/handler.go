@@ -1,6 +1,8 @@
 package api
 
 import (
+	"sync"
+
 	"presetdock/backend/internal/launcher"
 	"presetdock/backend/internal/runtime"
 )
@@ -11,6 +13,11 @@ type Handler struct {
 	launcher   launcher.Launcher
 	heartbeat  *runtime.Heartbeat
 	shutdown   func()
+
+	// mu serializes mutation requests. The JSON stores use read-modify-write
+	// (load, change, save) without on-disk locking, so concurrent writes
+	// could otherwise interleave and lose updates.
+	mu sync.Mutex
 }
 
 // NewHandler returns a new Handler wired with the given dependencies.

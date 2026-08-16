@@ -33,18 +33,6 @@ function setFavourites(favourites) {
   favouritesCache = favourites;
 }
 
-function setViewModeState(mode) {
-  viewMode = mode;
-}
-
-function setLeftPane(pane) {
-  leftPane = pane;
-}
-
-function setRightPane(pane) {
-  rightPane = pane;
-}
-
 function setCardActionsRef(ref) {
   cardActionsRef = ref;
 }

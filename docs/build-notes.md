@@ -41,3 +41,4 @@ Example:
 - The browser opens automatically after startup.
 - The UI is embedded into the binary with `go:embed`.
 - The project intentionally stays standard-library only on the Go side.
+- Literal `%` in preset commands is not escaped by PresetDock. With the cmd launcher the command runs from a batch file, so cmd.exe's own `%` rules apply (`%NAME%` expands to the environment variable, `%%` yields a literal `%`); with the PowerShell launcher the command passes through unchanged. Window titles are escaped for cmd.exe, but command bodies are intentionally left untouched.

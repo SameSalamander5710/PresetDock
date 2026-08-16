@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -24,6 +25,8 @@ func (h *Handler) HandlePresetsList(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, presetList)
 
 	case http.MethodPost:
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		var req presets.CreatePresetRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			httpError(w, http.StatusBadRequest, "invalid preset JSON")
@@ -76,6 +79,10 @@ func (h *Handler) HandlePresetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Both PUT and DELETE mutate the stores, so serialize them.
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	switch r.Method {
 	case http.MethodPut:
 		var req presets.UpdatePresetRequest
@@ -115,15 +122,15 @@ func (h *Handler) HandlePresetByID(w http.ResponseWriter, r *http.Request) {
 			httpError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		// Drop the dead reference from decks.json and favourites.json so the
-		// central relation files never keep IDs of deleted presets.
+		// Drop the dead reference from decks.json and favourites.json. This
+		// is best-effort: the preset file is already gone, so a failure here
+		// must not turn the delete into an error — a stale reference is
+		// harmless and the next save of that file rewrites it.
 		if err := decks.RemovePreset(h.presetsDir, id); err != nil {
-			httpError(w, http.StatusInternalServerError, err.Error())
-			return
+			log.Printf("decks: could not remove preset %s: %v", id, err)
 		}
 		if err := favourites.RemoveID(h.presetsDir, id); err != nil {
-			httpError(w, http.StatusInternalServerError, err.Error())
-			return
+			log.Printf("favourites: could not remove preset %s: %v", id, err)
 		}
 		w.WriteHeader(http.StatusNoContent)
 

@@ -5,24 +5,6 @@
 const apiBase = '';
 
 // --------------------------------------------------------------------------
-// Server info
-// --------------------------------------------------------------------------
-
-async function loadServerInfo() {
-  try {
-    const res = await fetch(`${apiBase}/api/info`);
-    if (!res.ok) return;
-    const data = await res.json();
-    const el = document.getElementById('server-info');
-    if (el && data) {
-      el.textContent = `Server running on port ${data.port} | OS: ${data.os}`;
-    }
-  } catch {
-    // ignore
-  }
-}
-
-// --------------------------------------------------------------------------
 // Data loading
 // --------------------------------------------------------------------------
 
@@ -53,12 +35,7 @@ async function loadFavourites() {
     const res = await fetch(`${apiBase}/api/favourites`);
     if (!res.ok) throw new Error('Failed to load favourites');
     const data = await res.json();
-    const favs = data.favourites || data;
-    if (Array.isArray(data) && !Array.isArray(data.favourites)) {
-      setFavourites(data);
-    } else {
-      setFavourites(favs);
-    }
+    setFavourites(data);
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -129,7 +106,7 @@ async function deletePreset(presetId, presetName) {
   const resp = await fetch(`${apiBase}/api/presets/${encodeURIComponent(presetId)}`, {
     method: 'DELETE',
   });
-  if (!resp.ok && resp.status !== 204) {
+  if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
     throw new Error(err.error || 'Delete failed');
   }
@@ -194,7 +171,7 @@ async function deleteDeckApi(deckName) {
   const response = await fetch(`${apiBase}/api/decks/${encodeURIComponent(deckName)}`, {
     method: 'DELETE',
   });
-  if (!response.ok && response.status !== 204) {
+  if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to delete deck');
   }

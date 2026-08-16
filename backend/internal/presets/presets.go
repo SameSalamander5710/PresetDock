@@ -14,6 +14,7 @@ import (
 
 	"presetdock/backend/internal/decks"
 	"presetdock/backend/internal/favourites"
+	"presetdock/backend/internal/storeutil"
 )
 
 // Preset represents a single saved model launch configuration.
@@ -176,9 +177,19 @@ func Load(presetsDir string) ([]PresetView, error) {
 			continue
 		}
 
-		preset, err := Read(filepath.Join(presetsDir, entry.Name()))
+		path := filepath.Join(presetsDir, entry.Name())
+		data, err := os.ReadFile(path)
 		if err != nil {
 			log.Printf("skipping preset %s: %v", entry.Name(), err)
+			continue
+		}
+		var preset Preset
+		if err := json.Unmarshal(data, &preset); err != nil {
+			// A corrupt preset file is quarantined (not deleted) so the user
+			// can recover it, and the rest of the store stays usable.
+			if q := storeutil.Quarantine(path); q != "" {
+				log.Printf("presets: quarantined corrupt %s to %s", entry.Name(), q)
+			}
 			continue
 		}
 
@@ -240,13 +251,22 @@ func Migrate(presetsDir string) error {
 		if base == "favourites" || base == "decks" {
 			continue
 		}
-		presetCount++
 		path := filepath.Join(presetsDir, name)
-		preset, err := Read(path)
+		data, err := os.ReadFile(path)
 		if err != nil {
 			log.Printf("presets: skipping %s: %v", name, err)
 			continue
 		}
+		var preset Preset
+		if err := json.Unmarshal(data, &preset); err != nil {
+			if q := storeutil.Quarantine(path); q != "" {
+				log.Printf("presets: quarantined corrupt %s to %s", name, q)
+			}
+			continue
+		}
+		// Only count files that actually parsed, so a directory whose preset
+		// files are all corrupt still counts as empty and gets seeded.
+		presetCount++
 		// Legacy files carry no uid (the old code never wrote one), so an empty
 		// uid is a reliable migration trigger regardless of the file name.
 		if preset.UID != "" {
@@ -341,7 +361,7 @@ func writePreset(path string, preset Preset) error {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o644)
+	return storeutil.WriteFileAtomic(path, data, 0o644)
 }
 
 func examplePreset() Preset {
