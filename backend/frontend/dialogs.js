@@ -33,6 +33,7 @@ function dialogRefs() {
       deckEditorForm: assertElement('deck-editor-form', 'dialogs'),
       deckNameInput: assertElement('deck-name-input', 'dialogs'),
       deckPresetsSearch: assertElement('deck-presets-search', 'dialogs'),
+      deckPresetsLabel: assertElement('deck-presets-label', 'dialogs'),
       deckPresetsList: assertElement('deck-presets-list', 'dialogs'),
       deckNewButton: assertElement('deck-new-button', 'dialogs'),
       deckSaveButton: assertElement('deck-save-button', 'dialogs'),
@@ -103,9 +104,15 @@ function closeEditor() {
 // --------------------------------------------------------------------------
 let editingDeckName = null;
 
+function setDeckPresetsLabel(isNew) {
+  const r = dialogRefs();
+  r.deckPresetsLabel.textContent = isNew ? 'Presets available' : 'Presets in this deck';
+}
+
 function showDecksDialog() {
   const r = dialogRefs();
   editingDeckName = null;
+  setDeckPresetsLabel(true);
   r.deckNameInput.value = '';
   r.deckPresetsSearch.value = '';
   r.deckEditorEmpty.hidden = true;
@@ -126,6 +133,7 @@ function closeDecksDialog() {
 function showNewDeckUI() {
   const r = dialogRefs();
   editingDeckName = null;
+  setDeckPresetsLabel(true);
   r.deckNameInput.value = '';
   r.deckPresetsSearch.value = '';
   r.deckEditorEmpty.hidden = true;
@@ -169,6 +177,7 @@ function renderDecksList() {
 function selectDeckForEditing(deckName) {
   const r = dialogRefs();
   editingDeckName = deckName;
+  setDeckPresetsLabel(false);
   const deck = decksCache.find((d) => d.name === deckName);
   if (!deck) return;
 
@@ -193,6 +202,9 @@ function renderDeckPresetsList(selectedIds) {
       (p.name || '').toLowerCase().includes(searchQuery) || (p.id || '').toLowerCase().includes(searchQuery)
     );
   }
+  available.sort((a, b) =>
+    (a.name || a.id).localeCompare(b.name || b.id, undefined, { sensitivity: 'base', numeric: true })
+  );
 
   if (available.length === 0) {
     const empty = document.createElement('div');
@@ -208,6 +220,7 @@ function renderDeckPresetsList(selectedIds) {
 
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.value = preset.id;
     cb.checked = selectedIds.includes(preset.id);
 
     const label = document.createElement('span');
@@ -313,8 +326,12 @@ function wireDialogs(onEditorSave, onEditorRun, onDeckSave, onDeckDelete) {
   r.deckPresetsSearch.addEventListener('input', () => {
     if (editingDeckName) {
       const deck = decksCache.find((d) => d.name === editingDeckName);
-      if (deck) renderDeckPresetsList(deck.preset_ids);
+      if (deck) {
+        renderDeckPresetsList(deck.preset_ids);
+        return;
+      }
     }
+    renderDeckPresetsList([]);
   });
 
   // Deck new button
@@ -332,11 +349,7 @@ function wireDialogs(onEditorSave, onEditorRun, onDeckSave, onDeckDelete) {
     const checkboxes = r.deckPresetsList.querySelectorAll('.deck-preset-item input[type="checkbox"]');
     const presetIds = [];
     checkboxes.forEach((cb) => {
-      if (cb.checked) {
-        const labelText = cb.parentElement.querySelector('span').textContent;
-        const preset = presetsCache.find((p) => (p.name || p.id) === labelText);
-        if (preset) presetIds.push(preset.id);
-      }
+      if (cb.checked) presetIds.push(cb.value);
     });
 
     r.deckSaveButton.disabled = true;
