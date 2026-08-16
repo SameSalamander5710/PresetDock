@@ -44,8 +44,9 @@ logic, or lifecycle state.
 - `presets_handler.go` — `GET /api/presets`, `POST /api/presets`,
   `PUT /api/presets/:id`, `DELETE /api/presets/:id`. Create and update accept
   an optional `deck_names` list (see Central Membership Writer below); an
-  absent field on update leaves membership untouched, an empty list removes
-  the preset from all decks. Delete also strips the ID from `decks.json` and
+  absent field leaves membership untouched (duplicates inherit the source
+  preset's decks this way), an explicit empty list removes the preset from
+  all decks. Delete also strips the ID from `decks.json` and
   `favourites.json`.
 - `favourites_handler.go` — `GET /api/favourites`, `POST /api/favourites`
   (JSON body `{"preset_id": ...}`), `DELETE /api/favourites/:presetId`.

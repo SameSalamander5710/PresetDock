@@ -15,5 +15,5 @@
 # vendor/
 
 # User-specific 
-presets/
+/presets/
 opencode.json

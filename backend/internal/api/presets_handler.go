@@ -52,10 +52,13 @@ func (h *Handler) HandlePresetsList(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// An explicit deck_names list takes final say over the propagated
-		// membership (central membership writer).
-		if err := decks.SetPresetDecks(h.presetsDir, savedPreset.ID, req.DeckNames); err != nil {
-			httpError(w, http.StatusInternalServerError, err.Error())
-			return
+		// membership (central membership writer). A nil list leaves
+		// membership as propagated (or empty for a plain create).
+		if req.DeckNames != nil {
+			if err := decks.SetPresetDecks(h.presetsDir, savedPreset.ID, *req.DeckNames); err != nil {
+				httpError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
 		}
 
 		writeJSON(w, http.StatusCreated, savedPreset)
