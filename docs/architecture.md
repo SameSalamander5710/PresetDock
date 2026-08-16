@@ -139,8 +139,8 @@ uses the new layout.
 
 `backend/internal/runtime/` owns process lifecycle helpers.
 
-- `heartbeat.go` — `Heartbeat` state with `LastActive()`, `Touch()`, and
-  `IsStale(bool)` methods.
+- `heartbeat.go` — `Heartbeat` state with `Touch()` and `Stale(timeout)`
+  methods.
 - `runner.go` — `Runner` struct that wraps `*http.Server`, exposes
   `MonitorHeartbeat()` (background goroutine) and `Shutdown()` (graceful
   server shutdown).
