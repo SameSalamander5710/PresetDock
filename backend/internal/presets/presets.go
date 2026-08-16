@@ -33,6 +33,7 @@ type Preset struct {
 }
 
 // CreatePresetRequest is the API DTO for creating a new preset.
+// DeckNames optionally assigns the new preset to the named decks.
 type CreatePresetRequest struct {
 	Name           string   `json:"name"`
 	Engine         string   `json:"engine,omitempty"`
@@ -42,6 +43,16 @@ type CreatePresetRequest struct {
 	Command        string   `json:"command"`
 	Shell          string   `json:"shell"`
 	SourcePresetID string   `json:"source_preset_id,omitempty"`
+	DeckNames      []string `json:"deck_names,omitempty"`
+}
+
+// UpdatePresetRequest is the API DTO for updating an existing preset.
+// DeckNames is a pointer so an absent field (nil) means "leave deck
+// membership untouched" while an explicit empty slice means "remove from all
+// decks".
+type UpdatePresetRequest struct {
+	Preset
+	DeckNames *[]string `json:"deck_names"`
 }
 
 // PresetView combines a preset with its file-derived ID and favourite status.

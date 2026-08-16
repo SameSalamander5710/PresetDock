@@ -41,13 +41,17 @@ logic, or lifecycle state.
 - `routes.go` — `Register()` mounts all routes on `*http.ServeMux` and attaches
   the static frontend fallback with cache-busting headers.
 - `responses.go` — `writeJSON()`, `httpError()`, and `methodNotAllowed()` helpers.
-- `presets_handler.go` — `GET /api/presets`, `GET /api/presets/:id`,
-  `POST /api/presets`, `PATCH /api/presets/:id`, `DELETE /api/presets/:id`.
-- `favourites_handler.go` — `GET /api/favourites`,
-  `POST /api/favourites/:presetId`, `DELETE /api/favourites/:presetId`.
-- `decks_handler.go` — `GET /api/decks`, `GET /api/decks/:name`,
-  `POST /api/decks`, `PATCH /api/decks/:name`, `DELETE /api/decks/:name`,
-  `POST /api/decks/:name/presets/:presetId`, `DELETE /api/decks/:name/presets/:presetId`.
+- `presets_handler.go` — `GET /api/presets`, `POST /api/presets`,
+  `PUT /api/presets/:id`, `DELETE /api/presets/:id`. Create and update accept
+  an optional `deck_names` list (see Central Membership Writer below); an
+  absent field on update leaves membership untouched, an empty list removes
+  the preset from all decks. Delete also strips the ID from `decks.json` and
+  `favourites.json`.
+- `favourites_handler.go` — `GET /api/favourites`, `POST /api/favourites`
+  (JSON body `{"preset_id": ...}`), `DELETE /api/favourites/:presetId`.
+- `decks_handler.go` — `GET /api/decks`, `POST /api/decks`,
+  `PUT /api/decks/:name`, `DELETE /api/decks/:name`. Deck names are matched
+  case-insensitively. `PUT` replaces the whole deck (name + `preset_ids`).
 - `run_handler.go` — `POST /api/run` (direct command), `POST /api/run/:id` (preset).
 - `runtime_handler.go` — `POST /api/heartbeat`, `POST /api/shutdown`.
 
@@ -63,6 +67,33 @@ The API layer depends on storage helpers, the `Launcher` interface, the
 2. Validation for their own data.
 3. ID generation and slugging for presets.
 4. Membership propagation helpers where needed.
+
+### Central Membership Writer
+
+`presets/decks.json` (`[{name, preset_ids}]`) is the sole source of truth for
+preset↔deck membership, stored in the deck→preset direction. Preset files carry
+no deck information; the inverse (which decks a preset belongs to) is always
+derived, never stored. All membership mutations go through one central writer
+in `backend/internal/decks/`:
+
+- `SetPresetDecks(presetsDir, presetID, deckNames)` — ensures `presetID` is
+  present exactly in the named decks. Deck names are matched
+  case-insensitively, unknown names are ignored, and the file is rewritten only
+  when membership actually changes. Every code path that changes membership
+  (preset create, preset update, duplicate propagation) must route through this
+  function instead of editing `decks.json` directly.
+- `DecksForPreset(list, presetID)` — derives the deck names containing
+  `presetID` from an already-loaded deck list (used by duplicate propagation
+  and available to any future reader).
+- `RemovePreset(presetsDir, presetID)` — strips a deleted preset's ID from
+  every deck; the preset delete handler calls it so `decks.json` never keeps
+  dead references. `favourites.RemoveID()` does the same for
+  `favourites.json`.
+
+Because membership lives only in `decks.json`, a rename is safe:
+`presets.Update()` remaps deck/favourite references to the new ID (via
+`remapIDs()`), and the API layer applies `deck_names` with the new ID after the
+update so a rename and a membership change compose in one save.
 
 ### Preset File Naming and Migration
 
@@ -170,7 +201,7 @@ configurable constants.
 and view mode. Key exports: `createPaneState()`, `wirePaneEvents()`,
 `renderAllPanes()`, `renderPane()`, `filterPresets()`, `buildSuggestions()`,
 `showSuggestions()`/`hideSuggestions()`, `syncDeckSelectors()`,
-`setViewModeUI()`, `openCreateEditor()`.
+`setViewModeUI()`.
 
 ### Dialogs
 
@@ -178,6 +209,14 @@ and view mode. Key exports: `createPaneState()`, `wirePaneEvents()`,
 dialog. `wireDialogs()` connects all dialog buttons to callback functions.
 `openEditorForPreset()` pre-fills the editor. Deck helpers manage the deck
 list, editor form, and preset checkboxes.
+
+The preset editor shows a Decks area (right half of the Tags row) with one
+checkbox per deck. `renderPresetDecksList(presetId)` checks a deck when
+`decksCache` says it contains `presetId` (the derived inverse of the
+deck→preset relation); the create editor renders all unchecked. The checkbox
+state is committed on Save: the submit handler sends the checked deck names as
+`deck_names` in both the create and update payloads, and the backend applies
+them through the central membership writer.
 
 ### Actions
 
@@ -194,6 +233,7 @@ clicking outside a pane.
 2. `backend/frontend/` is the sole frontend directory, the source of truth for the shipped UI, and is embedded into the binary.
 3. `backend/internal/` is the sole backend package path and owns all Go domain logic.
 4. The preset JSON schema should stay stable unless a migration is explicitly planned.
+5. `presets/decks.json` is the sole source of truth for preset↔deck membership, stored deck→preset. The inverse is derived (`decks.DecksForPreset`), and all membership changes go through `decks.SetPresetDecks` — never edit the file ad hoc.
 
 ## Extension Rules
 

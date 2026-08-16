@@ -49,3 +49,96 @@ func Save(presetsDir string, decks []Deck) error {
 	data = append(data, '\n')
 	return os.WriteFile(Path(presetsDir), data, 0o644)
 }
+
+// DecksForPreset returns the names of all decks in list that contain presetID.
+// The result preserves the order of list.
+func DecksForPreset(list []Deck, presetID string) []string {
+	names := make([]string, 0)
+	for _, d := range list {
+		for _, id := range d.PresetIDs {
+			if id == presetID {
+				names = append(names, d.Name)
+				break
+			}
+		}
+	}
+	return names
+}
+
+// SetPresetDecks is the single central writer for preset-deck membership. It
+// ensures presetID is present exactly in the named decks (matched
+// case-insensitively by name) and removes it from every other deck. Deck names
+// that do not exist are ignored. The file is rewritten only when membership
+// actually changes.
+func SetPresetDecks(presetsDir, presetID string, deckNames []string) error {
+	if presetID == "" {
+		return nil
+	}
+	list, err := Load(presetsDir)
+	if err != nil {
+		return err
+	}
+	target := make(map[string]bool, len(deckNames))
+	for _, name := range deckNames {
+		target[strings.ToLower(name)] = true
+	}
+	changed := false
+	for i, d := range list {
+		inTarget := target[strings.ToLower(d.Name)]
+		hasPreset := false
+		for _, id := range d.PresetIDs {
+			if id == presetID {
+				hasPreset = true
+				break
+			}
+		}
+		switch {
+		case inTarget && !hasPreset:
+			d.PresetIDs = append(d.PresetIDs, presetID)
+			changed = true
+		case !inTarget && hasPreset:
+			ids := make([]string, 0, len(d.PresetIDs)-1)
+			for _, id := range d.PresetIDs {
+				if id != presetID {
+					ids = append(ids, id)
+				}
+			}
+			d.PresetIDs = ids
+			changed = true
+		}
+		list[i] = d
+	}
+	if !changed {
+		return nil
+	}
+	return Save(presetsDir, list)
+}
+
+// RemovePreset strips presetID from every deck and persists the change. It is
+// used when a preset is deleted so decks.json never keeps dead references.
+func RemovePreset(presetsDir, presetID string) error {
+	if presetID == "" {
+		return nil
+	}
+	list, err := Load(presetsDir)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for i := range list {
+		ids := make([]string, 0, len(list[i].PresetIDs))
+		for _, id := range list[i].PresetIDs {
+			if id != presetID {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) != len(list[i].PresetIDs) {
+			list[i].PresetIDs = ids
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return Save(presetsDir, list)
+}

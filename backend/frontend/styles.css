@@ -1055,6 +1055,12 @@ button:disabled {
   cursor: pointer;
 }
 
+/* Preset editor: deck membership list (right half of the Tags row) */
+.preset-decks-list {
+  min-height: 88px;
+  max-height: 150px;
+}
+
 .deck-editor-actions {
   display: flex;
   align-items: center;

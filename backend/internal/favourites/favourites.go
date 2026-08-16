@@ -51,3 +51,29 @@ func Save(presetsDir string, favs []string) error {
 	data = append(data, '\n')
 	return os.WriteFile(Path(presetsDir), data, 0o644)
 }
+
+// RemoveID strips presetID from the favourites list and persists the change.
+// It is used when a preset is deleted so favourites.json never keeps dead
+// references. The file is rewritten only when membership actually changes.
+func RemoveID(presetsDir, presetID string) error {
+	if presetID == "" {
+		return nil
+	}
+	favs, err := Load(presetsDir)
+	if err != nil {
+		return err
+	}
+	changed := false
+	kept := make([]string, 0, len(favs))
+	for _, id := range favs {
+		if id == presetID {
+			changed = true
+			continue
+		}
+		kept = append(kept, id)
+	}
+	if !changed {
+		return nil
+	}
+	return Save(presetsDir, kept)
+}

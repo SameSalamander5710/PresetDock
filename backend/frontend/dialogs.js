@@ -20,6 +20,7 @@ function dialogRefs() {
       presetDescription: assertElement('preset-description', 'dialogs'),
       presetCommand: assertElement('preset-command', 'dialogs'),
       presetShell: assertElement('preset-shell', 'dialogs'),
+      presetDecksList: assertElement('preset-decks-list', 'dialogs'),
       presetEditorFeedback: assertElement('preset-editor-feedback', 'dialogs'),
       presetUid: assertElement('preset-uid', 'dialogs'),
       editorSave: assertElement('editor-save', 'dialogs'),
@@ -71,6 +72,7 @@ function openEditorForPreset(preset) {
   r.presetEditorFeedback.textContent = '';
   r.presetEditorFeedback.classList.remove('error');
   r.editorSave.textContent = 'Save changes';
+  renderPresetDecksList(preset.id);
   r.presetDialog.showModal();
 }
 
@@ -90,6 +92,7 @@ function openCreateEditor() {
   r.presetEditorFeedback.textContent = '';
   r.presetEditorFeedback.classList.remove('error');
   r.editorSave.textContent = 'Save preset';
+  renderPresetDecksList(null);
   r.presetDialog.showModal();
 }
 
@@ -97,6 +100,39 @@ function closeEditor() {
   const r = dialogRefs();
   r.presetDialog.close();
   editingPresetId = null;
+}
+
+// Renders the deck membership checkboxes in the preset editor. A deck is
+// checked when it currently contains presetId (membership lives in
+// decksCache; the inverse of the deck -> preset relation). Pass null for a
+// new preset so nothing is pre-checked.
+function renderPresetDecksList(presetId) {
+  const r = dialogRefs();
+  r.presetDecksList.innerHTML = '';
+
+  if (decksCache.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No decks yet.';
+    r.presetDecksList.appendChild(empty);
+    return;
+  }
+
+  decksCache.forEach((deck) => {
+    const item = document.createElement('label');
+    item.className = 'deck-preset-item';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = deck.name;
+    cb.checked = presetId ? (deck.preset_ids || []).includes(presetId) : false;
+
+    const label = document.createElement('span');
+    label.textContent = deck.name;
+
+    item.append(cb, label);
+    r.presetDecksList.appendChild(item);
+  });
 }
 
 // --------------------------------------------------------------------------
@@ -247,6 +283,10 @@ function wireDialogs(onEditorSave, onEditorRun, onDeckSave, onDeckDelete) {
       .map((t) => t.trim())
       .filter(Boolean);
 
+    const deckNames = [...r.presetDecksList.querySelectorAll('.deck-preset-item input[type="checkbox"]')]
+      .filter((cb) => cb.checked)
+      .map((cb) => cb.value);
+
     const payload = {
       name: r.presetName.value.trim(),
       engine: r.presetEngine.value.trim(),
@@ -255,6 +295,7 @@ function wireDialogs(onEditorSave, onEditorRun, onDeckSave, onDeckDelete) {
       description: r.presetDescription.value.trim(),
       command: r.presetCommand.value.trim(),
       shell: r.presetShell.value,
+      deck_names: deckNames,
     };
 
     if (!payload.name && !payload.command) {

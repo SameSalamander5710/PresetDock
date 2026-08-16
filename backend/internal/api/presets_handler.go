@@ -51,6 +51,13 @@ func (h *Handler) HandlePresetsList(w http.ResponseWriter, r *http.Request) {
 			h.propagatePresetMembership(req.SourcePresetID, savedPreset.ID)
 		}
 
+		// An explicit deck_names list takes final say over the propagated
+		// membership (central membership writer).
+		if err := decks.SetPresetDecks(h.presetsDir, savedPreset.ID, req.DeckNames); err != nil {
+			httpError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
 		writeJSON(w, http.StatusCreated, savedPreset)
 
 	default:
@@ -68,13 +75,13 @@ func (h *Handler) HandlePresetByID(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
-		var preset presets.Preset
-		if err := json.NewDecoder(r.Body).Decode(&preset); err != nil {
+		var req presets.UpdatePresetRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			httpError(w, http.StatusBadRequest, "invalid preset JSON")
 			return
 		}
 
-		savedPreset, err := presets.Update(h.presetsDir, id, preset)
+		savedPreset, err := presets.Update(h.presetsDir, id, req.Preset)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				http.NotFound(w, r)
@@ -82,6 +89,17 @@ func (h *Handler) HandlePresetByID(w http.ResponseWriter, r *http.Request) {
 			}
 			httpError(w, http.StatusBadRequest, err.Error())
 			return
+		}
+
+		// Apply the requested deck membership (central membership writer).
+		// A nil DeckNames means the client left membership untouched. The new
+		// ID is used so a rename and a membership change in the same save
+		// compose with the ID remap done by presets.Update.
+		if req.DeckNames != nil {
+			if err := decks.SetPresetDecks(h.presetsDir, savedPreset.ID, *req.DeckNames); err != nil {
+				httpError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
 		}
 		writeJSON(w, http.StatusOK, savedPreset)
 
@@ -91,6 +109,16 @@ func (h *Handler) HandlePresetByID(w http.ResponseWriter, r *http.Request) {
 				http.NotFound(w, r)
 				return
 			}
+			httpError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		// Drop the dead reference from decks.json and favourites.json so the
+		// central relation files never keep IDs of deleted presets.
+		if err := decks.RemovePreset(h.presetsDir, id); err != nil {
+			httpError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := favourites.RemoveID(h.presetsDir, id); err != nil {
 			httpError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -131,32 +159,13 @@ func (h *Handler) propagatePresetMembership(sourcePresetID, newPresetID string) 
 		}
 	}
 
-	// Propagate to decks
+	// Propagate to decks via the central membership writer.
 	if sourcePresetID != newPresetID {
 		dk, err := decks.Load(h.presetsDir)
 		if err == nil {
-			modified := false
-			for i, deck := range dk {
-				for _, id := range deck.PresetIDs {
-					if id == sourcePresetID {
-						alreadyThere := false
-						for _, id2 := range deck.PresetIDs {
-							if id2 == newPresetID {
-								alreadyThere = true
-								break
-							}
-						}
-						if !alreadyThere {
-							deck.PresetIDs = append(deck.PresetIDs, newPresetID)
-							dk[i] = deck
-							modified = true
-						}
-						break
-					}
-				}
-			}
-			if modified {
-				_ = decks.Save(h.presetsDir, dk)
+			names := decks.DecksForPreset(dk, sourcePresetID)
+			if len(names) > 0 {
+				_ = decks.SetPresetDecks(h.presetsDir, newPresetID, names)
 			}
 		}
 	}
