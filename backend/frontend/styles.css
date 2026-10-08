@@ -436,7 +436,7 @@ h1 {
 
 .grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -452,6 +452,7 @@ h1 {
   backdrop-filter: blur(10px);
   animation: rise 420ms ease both;
   width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .field-grid {
